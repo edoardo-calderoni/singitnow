@@ -1,0 +1,294 @@
+/* App mobile per i partecipanti */
+
+body {
+  font-size: 15px;
+  background:
+    radial-gradient(600px 400px at 0% -10%, rgba(139, 92, 246, 0.18), transparent 60%),
+    var(--bg);
+  background-attachment: fixed;
+}
+
+.m-app {
+  min-height: 100%;
+  padding-bottom: calc(76px + env(safe-area-inset-bottom));
+}
+
+.m-head {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: calc(12px + env(safe-area-inset-top)) 16px 12px;
+  background: rgba(11, 11, 20, 0.85);
+  backdrop-filter: blur(14px);
+  border-bottom: 1px solid var(--border);
+}
+.m-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-display);
+  font-size: 20px;
+  font-weight: 700;
+}
+.m-brand img {
+  width: 30px;
+  height: 30px;
+}
+.m-user {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 34px;
+  padding: 0 12px 0 6px;
+  border-radius: 17px;
+  background: var(--surface-2);
+  font-weight: 600;
+  max-width: 50%;
+}
+.avatar.xs {
+  width: 24px;
+  height: 24px;
+  font-size: 10px;
+}
+.m-offline {
+  padding: 8px 16px;
+  font-size: 13px;
+  text-align: center;
+  background: rgba(251, 191, 36, 0.15);
+  color: var(--amber);
+}
+
+.m-main {
+  padding: 16px;
+}
+.m-section {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.m-h2 {
+  font-size: 18px;
+  margin-top: 6px;
+}
+
+/* ---------- ora in scena */
+.m-now {
+  position: relative;
+  overflow: hidden;
+  border-radius: 20px;
+  border: 1px solid var(--border-strong);
+}
+.m-now-bg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  filter: blur(18px) brightness(0.45) saturate(1.3);
+  transform: scale(1.3);
+}
+.m-now-body {
+  position: relative;
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.eyebrow {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--pink);
+}
+.m-now-title {
+  font-family: var(--font-display);
+  font-size: 22px;
+  font-weight: 700;
+}
+.m-now-ctrl {
+  display: flex;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+/* ---------- liste */
+.m-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.m-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px;
+  border-radius: 16px;
+  background: var(--surface);
+  border: 1px solid transparent;
+}
+.m-item.mine {
+  border-color: rgba(255, 61, 154, 0.45);
+  background: linear-gradient(90deg, rgba(255, 61, 154, 0.1), var(--surface) 60%);
+}
+.m-item.waiting {
+  opacity: 0.7;
+}
+.m-pos {
+  width: 18px;
+  text-align: center;
+  font-weight: 700;
+  color: var(--text-3);
+  flex: none;
+}
+.m-cover {
+  width: 56px;
+  height: 56px;
+}
+.m-cover.wide {
+  width: 96px;
+  height: 54px;
+}
+.m-item-main {
+  flex: 1;
+  min-width: 0;
+}
+.m-item-title {
+  font-weight: 650;
+  font-size: 15px;
+}
+.m-item-title.clamp2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  line-height: 1.3;
+}
+.m-item-sub {
+  margin-top: 3px;
+  font-size: 13px;
+  color: var(--text-2);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.m-item-sub b {
+  color: var(--text);
+}
+.m-item-act {
+  display: flex;
+  flex-direction: column;
+}
+.m-item-act .icon-btn {
+  width: 32px;
+  height: 26px;
+}
+
+.m-filters {
+  display: flex;
+  gap: 8px;
+}
+.m-filters .field {
+  flex: 1;
+}
+.m-filters .m-lang {
+  flex: none;
+  width: 116px;
+}
+.m-filters .btn {
+  height: 44px;
+  width: 52px;
+  padding: 0;
+}
+
+/* ---------- tab bar */
+.m-tabs {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 10;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  padding: 6px 8px calc(6px + env(safe-area-inset-bottom));
+  background: rgba(17, 17, 29, 0.92);
+  backdrop-filter: blur(16px);
+  border-top: 1px solid var(--border);
+}
+.m-tabs button {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3px;
+  padding: 8px 0;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-3);
+}
+.m-tabs button.on {
+  color: var(--text);
+}
+.m-tabs button.on svg {
+  color: var(--pink);
+}
+.m-dot {
+  position: absolute;
+  top: 2px;
+  left: calc(50% + 8px);
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  background: var(--pink);
+  color: white;
+  font-size: 10px;
+  display: grid;
+  place-items: center;
+}
+
+/* ---------- benvenuto */
+.m-welcome {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 16px;
+  padding: 32px 24px;
+  max-width: 440px;
+  margin: 0 auto;
+}
+.m-welcome-logo {
+  width: 72px;
+  height: 72px;
+}
+.m-welcome h1 {
+  font-size: 30px;
+  line-height: 1.15;
+}
+.m-welcome p {
+  margin: 0;
+  line-height: 1.5;
+}
+.btn-wide {
+  height: 52px;
+  font-size: 16px;
+}
+
+.toast {
+  bottom: calc(88px + env(safe-area-inset-bottom));
+}
+
+.m-filters .field {
+  min-width: 0;
+}
+html,
+body {
+  overflow-x: hidden;
+}

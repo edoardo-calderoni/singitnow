@@ -1,0 +1,18 @@
+# Ambiente Python
+.venv/
+__pycache__/
+*.pyc
+
+# Dati utente: libreria brani, modelli AI scaricati, log
+data/
+
+# Frontend
+frontend/node_modules/
+frontend/dist/
+*.tsbuildinfo
+
+# Editor / OS
+.idea/
+.vscode/
+Thumbs.db
+.DS_Store

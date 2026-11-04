@@ -1,0 +1,784 @@
+/* =================================================================
+   Interfaccia desktop / TV (10-foot UI): testi e controlli grandi,
+   leggibili da qualche metro. --ui-zoom viene calcolato in base alla
+   larghezza dello schermo (vedi main.tsx).
+   ================================================================= */
+
+body {
+  font-size: 16px;
+  overflow: hidden;
+}
+
+.app {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  height: 100vh;
+  background:
+    radial-gradient(1200px 600px at 10% -10%, rgba(139, 92, 246, 0.14), transparent 60%),
+    radial-gradient(900px 500px at 110% 110%, rgba(255, 61, 154, 0.1), transparent 60%),
+    var(--bg);
+}
+
+.sidebar,
+.content > .view,
+.queue,
+.modal,
+.toast {
+  zoom: var(--ui-zoom, 1);
+}
+
+/* ------------------------------------------------------------- sidebar */
+.sidebar {
+  width: 270px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 26px 18px 18px;
+  border-right: 1px solid var(--border);
+  background: rgba(11, 11, 20, 0.6);
+  overflow-y: auto;
+}
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 10px 26px;
+  font-family: var(--font-display);
+  font-size: 27px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+.brand img {
+  width: 42px;
+  height: 42px;
+}
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  height: 54px;
+  padding: 0 16px;
+  border-radius: 14px;
+  color: var(--text-2);
+  font-size: 17px;
+  font-weight: 600;
+  text-align: left;
+  transition: background 0.15s, color 0.15s;
+}
+.nav-item:hover {
+  background: var(--surface);
+  color: var(--text);
+}
+.nav-item.active {
+  background: var(--surface-2);
+  color: var(--text);
+  box-shadow: inset 3px 0 0 var(--pink);
+}
+.nav-count {
+  margin-left: auto;
+  min-width: 26px;
+  height: 26px;
+  padding: 0 8px;
+  border-radius: 13px;
+  display: grid;
+  place-items: center;
+  background: var(--violet);
+  color: white;
+  font-size: 13px;
+}
+.sidebar-spacer {
+  flex: 1;
+}
+.join-card {
+  padding: 18px;
+  border-radius: 18px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  text-align: center;
+}
+.join-title {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-weight: 650;
+  font-size: 15px;
+  margin-bottom: 14px;
+}
+.qr svg {
+  width: 100%;
+  height: auto;
+  border-radius: 12px;
+  display: block;
+}
+.join-url {
+  margin-top: 12px;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--cyan);
+  word-break: break-all;
+}
+.conn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  justify-content: center;
+  padding-top: 12px;
+  font-size: 12px;
+  color: var(--amber);
+}
+.conn.on {
+  color: var(--text-3);
+}
+
+/* ------------------------------------------------------------- contenuto */
+.content {
+  overflow-y: auto;
+  min-width: 0;
+}
+.view {
+  padding: 34px 40px 60px;
+  max-width: 1300px;
+}
+.view-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-end;
+  margin-bottom: 24px;
+}
+.view-head h1 {
+  font-size: 38px;
+}
+.view-head p {
+  margin: 6px 0 0;
+  font-size: 16px;
+}
+.toolbar {
+  display: flex;
+  gap: 12px;
+  margin-bottom: 22px;
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  padding: 8px 0;
+  background: linear-gradient(var(--bg) 70%, transparent);
+}
+.toolbar .field {
+  height: 54px;
+  font-size: 17px;
+  border-radius: 16px;
+}
+.toolbar .grow {
+  flex: 1;
+}
+.toolbar .select {
+  width: 220px;
+}
+.btn-lg {
+  height: 54px;
+  padding: 0 26px;
+  font-size: 17px;
+}
+.btn-block {
+  width: 100%;
+  height: 52px;
+  font-size: 16px;
+}
+
+/* ------------------------------------------------------------- elenco brani */
+.song-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.song-row {
+  display: grid;
+  grid-template-columns: auto 1fr auto auto;
+  align-items: center;
+  gap: 20px;
+  padding: 12px 16px 12px 12px;
+  border-radius: 18px;
+  background: var(--surface);
+  border: 1px solid transparent;
+  transition: background 0.15s, border-color 0.15s;
+}
+.song-row:hover {
+  background: var(--surface-2);
+  border-color: var(--border);
+}
+.song-cover {
+  width: 160px;
+  aspect-ratio: 16 / 9;
+  border-radius: 12px;
+}
+.cover-play {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: white;
+  background: rgba(10, 10, 20, 0.45);
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+.song-row:hover .cover-play {
+  opacity: 1;
+}
+.song-main {
+  min-width: 0;
+}
+.song-title {
+  font-family: var(--font-display);
+  font-size: 21px;
+  font-weight: 600;
+}
+.song-sub {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 5px;
+  min-width: 0;
+}
+.song-artist {
+  font-size: 16px;
+  color: var(--text-2);
+  min-width: 0;
+}
+.song-sub .song-duration::before {
+  content: "·";
+  margin-right: 12px;
+  color: var(--text-3);
+}
+.song-progress {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 10px;
+  font-size: 13px;
+  color: var(--text-3);
+}
+.song-progress .progress {
+  width: 200px;
+  flex: none;
+}
+.song-error {
+  margin-top: 6px;
+  font-size: 13px;
+  color: var(--red);
+}
+.song-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.song-duration {
+  flex: none;
+  font-size: 16px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-2);
+}
+.song-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.song-actions .btn {
+  margin-right: 6px;
+}
+.song-row.error {
+  opacity: 0.85;
+}
+
+/* ------------------------------------------------------------- playlist */
+.queue {
+  width: 380px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  padding: 30px 20px;
+  border-left: 1px solid var(--border);
+  background: rgba(11, 11, 20, 0.6);
+  overflow-y: auto;
+}
+.queue-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
+.queue-head h2 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 24px;
+}
+.queue-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.queue-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px;
+  border-radius: 16px;
+  background: var(--surface);
+}
+.queue-item.waiting {
+  opacity: 0.6;
+}
+.queue-pos {
+  width: 20px;
+  text-align: center;
+  font-weight: 700;
+  color: var(--text-3);
+}
+.queue-main {
+  flex: 1;
+  min-width: 0;
+}
+.queue-singer {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-weight: 650;
+  font-size: 16px;
+}
+.queue-song {
+  margin-top: 4px;
+  font-size: 14px;
+  color: var(--text-2);
+}
+.queue-actions {
+  display: flex;
+  flex-direction: column;
+}
+.queue-actions .icon-btn {
+  width: 28px;
+  height: 26px;
+}
+.queue-empty {
+  padding: 30px 10px;
+  text-align: center;
+  color: var(--text-3);
+  line-height: 1.6;
+}
+.avatar.xs {
+  width: 22px;
+  height: 22px;
+  font-size: 10px;
+}
+.avatar.big {
+  width: 64px;
+  height: 64px;
+  font-size: 28px;
+}
+
+/* ------------------------------------------------------------- dialog */
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.chip {
+  height: 32px;
+  padding: 0 14px;
+  border-radius: 16px;
+  background: var(--surface-3);
+  font-weight: 600;
+}
+.chip:hover {
+  background: var(--violet);
+}
+
+/* =================================================================
+   PLAYER — misure in vw/vh per adattarsi alla TV
+   ================================================================= */
+.player {
+  position: fixed;
+  inset: 0;
+  z-index: 50;
+  background: black;
+  overflow: hidden;
+  cursor: none;
+}
+.player.show-controls {
+  cursor: default;
+}
+.player-video {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+.player-shade {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(to top, rgba(0, 0, 0, 0.88) 0%, rgba(0, 0, 0, 0.55) 30%, transparent 55%),
+    linear-gradient(to bottom, rgba(0, 0, 0, 0.6), transparent 22%);
+}
+
+.player-top {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding: 2.4vh 2.6vw;
+}
+.now-singer {
+  display: flex;
+  align-items: center;
+  gap: 1vw;
+}
+.now-singer .avatar.big {
+  width: max(52px, 4.2vw);
+  height: max(52px, 4.2vw);
+  font-size: max(22px, 1.9vw);
+}
+.eyebrow {
+  font-size: max(13px, 1vw);
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--pink);
+}
+.player-title {
+  font-family: var(--font-display);
+  font-size: max(20px, 1.7vw);
+  font-weight: 650;
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.7);
+}
+.icon-btn.glass {
+  width: max(44px, 3vw);
+  height: max(44px, 3vw);
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.1);
+  backdrop-filter: blur(10px);
+  color: white;
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+.show-controls .icon-btn.glass {
+  opacity: 1;
+}
+
+/* ---------- testo karaoke */
+.lyrics {
+  position: absolute;
+  left: 4vw;
+  right: 4vw;
+  bottom: 15vh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.6vh;
+  text-align: center;
+  pointer-events: none;
+  transition: bottom 0.3s ease;
+}
+.show-controls .lyrics {
+  bottom: 19vh;
+}
+.lyric-line {
+  font-family: var(--font-display);
+  font-weight: 750;
+  line-height: 1.15;
+  letter-spacing: -0.005em;
+  max-width: 100%;
+  text-wrap: balance;
+}
+.lyric-line.current {
+  font-size: clamp(38px, 5.4vw, 140px);
+  /* doppia ombra: contorno scuro compatto + alone morbido, leggibile su ogni video */
+  filter: drop-shadow(0 0 0.03em rgba(0, 0, 0, 0.95)) drop-shadow(0 0.05em 0.14em rgba(0, 0, 0, 0.85));
+}
+.lyric-line.next {
+  font-size: clamp(26px, 3.4vw, 90px);
+  color: rgba(255, 255, 255, 0.7);
+  text-shadow:
+    0 0 0.06em rgba(0, 0, 0, 0.95),
+    0 0.05em 0.14em rgba(0, 0, 0, 0.85);
+}
+.lyric-word {
+  display: inline-block;
+  margin: 0 0.14em;
+}
+.lyric-line.current .lyric-word {
+  /* riempimento progressivo della parola cantata */
+  background: linear-gradient(90deg, #ffd23f 0%, #ff3d9a var(--p), #ffffff var(--p), #ffffff 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.lyric-hint {
+  font-size: clamp(22px, 2.4vw, 60px);
+  color: rgba(255, 255, 255, 0.6);
+}
+.lyric-wait {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.4vh;
+  margin-bottom: 1vh;
+}
+.lyric-wait .dots {
+  display: flex;
+  gap: 1.2vw;
+}
+.lyric-wait .dots span {
+  width: clamp(16px, 1.5vw, 40px);
+  height: clamp(16px, 1.5vw, 40px);
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.22);
+  transition: background 0.2s, transform 0.2s;
+}
+.lyric-wait .dots span.on {
+  background: var(--pink);
+  transform: scale(1.15);
+  box-shadow: 0 0 20px var(--pink);
+}
+.wait-bar {
+  width: clamp(200px, 22vw, 600px);
+  height: clamp(5px, 0.45vw, 12px);
+  border-radius: 99px;
+  background: rgba(255, 255, 255, 0.18);
+  overflow: hidden;
+}
+.wait-bar div {
+  height: 100%;
+  background: var(--grad);
+}
+
+/* ---------- annuncio prossimo brano (ultimi 30 s) */
+.upcoming {
+  position: absolute;
+  top: 2.4vh;
+  right: 2.6vw;
+  display: flex;
+  align-items: center;
+  gap: 1.1vw;
+  width: clamp(380px, 31vw, 820px);
+  padding: 1.1vw 1.3vw;
+  border-radius: 1.3vw;
+  background: rgba(16, 16, 30, 0.82);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  backdrop-filter: blur(14px);
+  box-shadow: 0 1vw 3vw rgba(0, 0, 0, 0.5);
+  animation: upcoming-in 0.5s cubic-bezier(0.2, 0.9, 0.3, 1.2);
+}
+.show-controls .upcoming {
+  top: calc(2.4vh + max(56px, 3.6vw));
+}
+.upcoming .cover {
+  width: clamp(64px, 5.4vw, 150px) !important;
+  height: clamp(64px, 5.4vw, 150px) !important;
+  border-radius: 0.7vw;
+}
+.upcoming-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35vw;
+}
+.upcoming-title {
+  font-family: var(--font-display);
+  font-size: clamp(20px, 1.75vw, 48px);
+  font-weight: 700;
+}
+.upcoming-meta {
+  font-size: clamp(14px, 1.1vw, 30px);
+  color: var(--text-2);
+}
+.upcoming-meta b {
+  color: var(--text);
+}
+.upcoming .progress {
+  height: clamp(5px, 0.4vw, 10px);
+  margin-top: 0.4vw;
+}
+.upcoming .progress > div {
+  transition: width 0.25s linear;
+}
+.upcoming-count {
+  min-width: 2ch;
+  text-align: center;
+  font-family: var(--font-display);
+  font-size: clamp(38px, 3.6vw, 100px);
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  background: var(--grad);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+@keyframes upcoming-in {
+  from {
+    opacity: 0;
+    transform: translateX(40px) scale(0.96);
+  }
+}
+
+/* ---------- stato centrale (caricamento, fine) */
+.player-center {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2vh;
+  text-align: center;
+  background: rgba(5, 5, 12, 0.55);
+}
+.player-center h2 {
+  font-size: clamp(28px, 3vw, 80px);
+}
+.player-center .row {
+  display: flex;
+  gap: 12px;
+}
+.finale-emoji {
+  font-size: clamp(60px, 7vw, 180px);
+  animation: pop 0.6s cubic-bezier(0.2, 0.9, 0.3, 1.4);
+}
+@keyframes pop {
+  from {
+    transform: scale(0.3);
+    opacity: 0;
+  }
+}
+.loader-ring {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  border: 5px solid rgba(255, 255, 255, 0.12);
+  border-top-color: var(--pink);
+  animation: spin 0.9s linear infinite;
+}
+.loader-text {
+  font-size: clamp(18px, 1.5vw, 40px);
+  color: var(--text-2);
+}
+
+/* ---------- barra controlli */
+.player-controls {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 0 2.6vw 2.2vh;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  opacity: 0;
+  transform: translateY(12px);
+  transition: opacity 0.3s, transform 0.3s;
+  zoom: var(--ui-zoom, 1);
+}
+.show-controls .player-controls {
+  opacity: 1;
+  transform: none;
+}
+.seek {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-2);
+}
+.seek input {
+  flex: 1;
+}
+.controls-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+}
+.controls-group {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.play-btn {
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: white;
+  color: #0b0b14;
+  transition: transform 0.12s;
+}
+.play-btn:active {
+  transform: scale(0.94);
+}
+.mixers {
+  gap: 26px;
+  padding: 8px 18px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  backdrop-filter: blur(12px);
+}
+.mixer {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+  font-weight: 600;
+}
+.mixer input {
+  width: 150px;
+}
+.mixer-val {
+  width: 38px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-2);
+}
+.offset {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  font-size: 14px;
+  font-variant-numeric: tabular-nums;
+}
+.offset span {
+  width: 46px;
+  text-align: center;
+}
+.player .icon-btn {
+  color: rgba(255, 255, 255, 0.85);
+}
+
+/* ------------------------------------------------------------- schermi stretti */
+@media (max-width: 1250px) {
+  .queue {
+    width: 320px;
+  }
+  .sidebar {
+    width: 230px;
+  }
+  .song-cover {
+    width: 128px;
+  }
+  .mixer-label {
+    display: none;
+  }
+}

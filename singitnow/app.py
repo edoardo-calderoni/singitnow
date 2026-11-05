@@ -209,6 +209,12 @@ def download(req: DownloadReq, request: Request, x_admin_token: str | None = Hea
 
 
 # ------------------------------------------------------------------ playlist / player
+@app.get("/api/users")
+def connected_users():
+    """Utenti collegati dal telefono in questo momento."""
+    return {"users": hub.users()}
+
+
 @app.get("/api/playlist")
 def get_playlist():
     return playlist.snapshot()
@@ -405,7 +411,14 @@ async def ws(websocket: WebSocket):
         await websocket.send_text(json.dumps({"event": "avatars", "data": avatars.public_map()}))
         await websocket.send_text(json.dumps({"event": "mode", "data": mode.public()}))
         while True:
-            await websocket.receive_text()  # keep-alive dal client
+            msg = await websocket.receive_text()  # "ping" (keep-alive) oppure {"hello": "<nome>"}
+            if msg.startswith("{"):
+                try:
+                    data = json.loads(msg)
+                except ValueError:
+                    continue
+                if isinstance(data, dict) and "hello" in data:
+                    hub.set_name(websocket, str(data["hello"] or ""))
     except WebSocketDisconnect:
         pass
     finally:

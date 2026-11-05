@@ -288,7 +288,7 @@ body {
 .song-actions .btn {
   margin-right: 6px;
 }
-.song-row.error {
+.song-row.status-error {
   opacity: 0.85;
 }
 
@@ -1038,5 +1038,46 @@ body {
 }
 .mode-seg.compact button {
   height: 34px;
+  font-size: 13px;
+}
+
+/* il passo in corso ("Sincronizzo le parole…") non deve mai allargare la riga */
+.song-progress > span:not(.song-eta) {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.song-progress .song-eta {
+  flex: none;
+}
+
+/* ---------- scelta di chi canta (utenti collegati) */
+.singer-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  max-height: 220px;
+  overflow-y: auto;
+  font-size: 14px;
+}
+.singer-pick {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 14px 6px 6px;
+  border-radius: 999px;
+  border: 1px solid var(--border);
+  background: var(--surface-2);
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+.singer-pick:hover {
+  border-color: var(--pink);
+}
+.singer-hint {
+  margin: 0;
   font-size: 13px;
 }

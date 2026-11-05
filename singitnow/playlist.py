@@ -89,7 +89,7 @@ class Playlist:
             )
 
     def add(self, song_id: str, singer: str) -> None:
-        singer = singer.strip()[:40] or "Ospite"
+        singer = singer.strip()[:40]  # può restare vuoto (brano aggiunto dal PC senza nome)
         with self._lock:
             song = library.get(song_id)
             if song and song.status == READY:

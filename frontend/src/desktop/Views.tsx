@@ -3,7 +3,6 @@ import {
   AlertTriangle,
   Check,
   Download,
-  ListPlus,
   Loader2,
   Mic2,
   Pencil,
@@ -113,7 +112,7 @@ export function LibraryView({
       ) : (
         <ul className="song-list">
           {shown.map((s) => (
-            <li key={s.id} className={`song-row ${s.status}`}>
+            <li key={s.id} className={`song-row status-${s.status}`}>
               <div className="cover song-cover">
                 <img src={s.thumbnail_url} alt="" loading="lazy" />
                 {s.status === "ready" && (
@@ -147,11 +146,8 @@ export function LibraryView({
               <div className="song-actions">
                 {s.status === "ready" && (
                   <>
-                    <button className="btn btn-primary btn-sm" onClick={() => onPlay(s)}>
+                    <button className="btn btn-primary btn-sm" onClick={() => onQueue(s)}>
                       <Play size={15} fill="currentColor" /> Aggiungi
-                    </button>
-                    <button className="icon-btn" title="Aggiungi alla coda" onClick={() => onQueue(s)}>
-                      <ListPlus size={20} />
                     </button>
                   </>
                 )}

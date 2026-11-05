@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import shutil
 import threading
 import time
@@ -12,6 +13,8 @@ from typing import Any
 
 from . import config
 from .events import hub
+
+log = logging.getLogger(__name__)
 
 # Stati della pipeline di elaborazione
 QUEUED = "queued"
@@ -132,7 +135,16 @@ class Library:
     def _save(self, song: Song) -> None:
         tmp = song.dir / "song.json.tmp"
         tmp.write_text(json.dumps(asdict(song), ensure_ascii=False, indent=2), encoding="utf-8")
-        tmp.replace(song.dir / "song.json")
+        # Su Windows la sostituzione fallisce se in quell'istante un altro programma sta leggendo
+        # il file (antivirus, indicizzazione, editor): si riprova per poco, poi si lascia perdere
+        # (lo stato in memoria resta giusto e verrà salvato al prossimo aggiornamento).
+        for attempt in range(10):
+            try:
+                tmp.replace(song.dir / "song.json")
+                return
+            except PermissionError:
+                time.sleep(0.05 * (attempt + 1))
+        log.warning("Impossibile salvare %s/song.json (file in uso)", song.id)
 
 
 library = Library()

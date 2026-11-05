@@ -48,11 +48,17 @@ export function RequestToasts({ items }: { items: Item[] }) {
             <div className="request-cover cover">
               {r.song?.thumbnail_url ? <img src={r.song.thumbnail_url} alt="" /> : <Mic2 />}
             </div>
-            <Avatar name={r.singer} className="request-avatar" />
+            {r.singer && <Avatar name={r.singer} className="request-avatar" />}
           </div>
           <div className="request-body">
             <div className="request-who ellipsis">
-              Richiesta di <b>{r.singer}</b>
+              {r.singer ? (
+                <>
+                  Richiesta di <b>{r.singer}</b>
+                </>
+              ) : (
+                "Nuovo brano in coda"
+              )}
             </div>
             <div className="request-title ellipsis">{r.song?.title ?? "Nuovo brano"}</div>
             <div className="request-meta ellipsis">

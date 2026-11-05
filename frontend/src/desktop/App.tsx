@@ -48,9 +48,6 @@ export function App() {
   }, [toast]);
 
   const processing = songs.filter((s) => !["ready", "error"].includes(s.status)).length;
-  const recentSingers = Array.from(
-    new Set([...playlist.entries.map((e) => e.singer), playlist.now_playing?.singer].filter(Boolean) as string[]),
-  ).slice(0, 8);
 
   const safe = useCallback(async (fn: () => Promise<unknown>) => {
     try {
@@ -110,7 +107,7 @@ export function App() {
           <LibraryView
             songs={songs}
             onPlay={(s) => safe(() => api.playSong(s.id))}
-            onQueue={setQueueFor}
+            onQueue={(s) => (jukebox ? safe(() => api.enqueue(s.id, "")) : setQueueFor(s))}
             onEdit={setEditing}
             onToast={setToast}
             goSearch={() => setTab("search")}
@@ -146,10 +143,12 @@ export function App() {
                 <img src={e.song?.thumbnail_url} alt="" />
               </div>
               <div className="queue-main">
-                <div className="queue-singer">
-                  <Avatar name={e.singer} className="xs" />
-                  <span className="ellipsis">{e.singer || "Ospite"}</span>
-                </div>
+                {e.singer && (
+                  <div className="queue-singer">
+                    <Avatar name={e.singer} className="xs" />
+                    <span className="ellipsis">{e.singer}</span>
+                  </div>
+                )}
                 <div className="queue-song ellipsis">{e.song?.title}</div>
               </div>
               <div className="queue-actions">
@@ -215,7 +214,6 @@ export function App() {
       {queueFor && (
         <SingerDialog
           song={queueFor}
-          recent={recentSingers}
           onCancel={() => setQueueFor(null)}
           onConfirm={(singer) => {
             const s = queueFor;

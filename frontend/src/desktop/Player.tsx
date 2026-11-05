@@ -291,7 +291,7 @@ export function Player({ entry, next, onClose, onNext }: Props) {
       {/* intestazione */}
       <header className="player-top">
         <div className="now-singer">
-          <Avatar name={entry.singer} className="big" />
+          {entry.singer && <Avatar name={entry.singer} className="big" />}
           <div>
             <div className="eyebrow">
               {entry.singer ? (jukebox ? `Brano aggiunto da ${entry.singer}` : `Ora canta ${entry.singer}`) : jukebox ? "Jukebox" : "Karaoke"}

@@ -25,7 +25,7 @@ import {
   SearchResult,
   Song,
 } from "../shared/api";
-import { LivePlayer, useLive } from "../shared/live";
+import { LivePlayer, setPresence, useLive } from "../shared/live";
 import { useJukebox } from "../shared/mode";
 import {
   Avatar,
@@ -72,6 +72,8 @@ export function App() {
     if (connected && getAdminToken()) adminCheck().then(setIsAdmin);
   }, [connected]);
   useVolumeKeys(isAdmin, player);
+  // il PC sa chi è collegato (per scegliere chi canta quando si aggiunge un brano dalla TV)
+  useEffect(() => setPresence(name), [name]);
   const jukebox = useJukebox();
   const serverPhoto = useAvatarUrl(name);
 
@@ -503,7 +505,11 @@ function QueueTab({
               <div className="m-item-main">
                 <div className="m-item-title ellipsis">{e.song?.title}</div>
                 <div className="m-item-sub ellipsis">
-                  <b>{e.singer || "Ospite"}</b> ·{" "}
+                  {e.singer && (
+                    <>
+                      <b>{e.singer}</b> ·{" "}
+                    </>
+                  )}
                   {fmtTime(e.song?.duration ?? 0)}
                   {e.singer === name && (i > 0 || now) && (
                     <span className="m-when"> · fra {fmtWait(starts[i]!)}</span>

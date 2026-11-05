@@ -127,6 +127,7 @@ export const api = {
       singer,
     }),
   playlist: () => req<PlaylistState>("GET", "/api/playlist"),
+  users: () => req<{ users: string[] }>("GET", "/api/users"),
   enqueue: (song_id: string, singer: string) => req<PlaylistState>("POST", "/api/playlist", { song_id, singer }),
   unqueue: (entry_id: string, singer = "") =>
     req<PlaylistState>("DELETE", `/api/playlist/${entry_id}?singer=${encodeURIComponent(singer)}`),

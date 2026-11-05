@@ -61,7 +61,7 @@ Il player riproduce base e voce con la Web Audio API, sincronizzate al campione,
 
 | Dove | Cosa |
 |---|---|
-| **Libreria** | Ricerca per titolo/artista, filtro lingua, *Aggiungi* (avvio immediato), aggiunta in coda, ✏️ per correggere artista/titolo/lingua e rigenerare il testo |
+| **Libreria** | Ricerca per titolo/artista, filtro lingua, *Aggiungi* mette il brano in coda (in Karaoke si sceglie chi canta tra gli utenti collegati dal telefono, oppure si lascia vuoto), ✏️ per correggere artista/titolo/lingua e rigenerare il testo |
 | **Aggiungi brano** | Pulsante in alto nella libreria: cerca su YouTube e *Aggiungi alla libreria*, l'elaborazione parte in background |
 | **Playlist** | Coda dei cantanti: riordina, avvia, rimuovi |
 | **Player** | `Spazio` play/pausa · `←/→` ±5 s · `V` voce guida on/off · `F` schermo intero · `Esc` chiudi. Il pulsante ⏱ corregge l'anticipo/ritardo del testo (memorizzato per brano) |

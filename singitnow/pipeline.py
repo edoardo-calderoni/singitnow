@@ -215,7 +215,10 @@ class Pipeline:
             remaining += sum(self._timing.expected(x, dur) for x in later if x in todo)
             # attenua i salti: la stima scende di un secondo al secondo e si corregge gradualmente
             shown = remaining if shown is None else 0.6 * (shown - 1.0) + 0.4 * remaining
-            library.update(sid, eta=round(max(shown, 1.0), 1))
+            try:
+                library.update(sid, eta=round(max(shown, 1.0), 1))
+            except Exception:  # un errore occasionale non deve fermare la stima per tutto il brano
+                log.exception("Aggiornamento tempo residuo")
 
     def _download(self, song: Song) -> None:
         sid = song.id

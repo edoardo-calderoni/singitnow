@@ -1,20 +1,36 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { Search } from "lucide-react";
+import { Avatar } from "../shared/Avatar";
 import { api, LANGUAGES, Song } from "../shared/api";
-import { useJukebox } from "../shared/mode";
 
+/**
+ * Karaoke: chi canta il brano aggiunto dal PC. Si cerca tra gli utenti collegati dal telefono
+ * (o si scrive un nome); il campo può restare vuoto.
+ */
 export function SingerDialog({
   song,
-  recent,
   onCancel,
   onConfirm,
 }: {
   song: Song;
-  recent: string[];
   onCancel: () => void;
   onConfirm: (singer: string) => void;
 }) {
   const [name, setName] = useState("");
-  const jukebox = useJukebox();
+  const [users, setUsers] = useState<string[] | null>(null);
+  // elenco aggiornato mentre il riquadro è aperto (qualcuno può entrare o uscire)
+  useEffect(() => {
+    let alive = true;
+    const load = () => api.users().then((r) => alive && setUsers(r.users)).catch(() => alive && setUsers([]));
+    load();
+    const id = window.setInterval(load, 3000);
+    return () => {
+      alive = false;
+      window.clearInterval(id);
+    };
+  }, []);
+  const q = name.trim().toLowerCase();
+  const shown = (users ?? []).filter((u) => u.toLowerCase().includes(q));
   return (
     <div className="modal-back" onClick={onCancel}>
       <form
@@ -25,27 +41,41 @@ export function SingerDialog({
           onConfirm(name.trim());
         }}
       >
-        <h3>{jukebox ? "Chi aggiunge il brano?" : "Chi canta?"}</h3>
+        <h3>Chi canta?</h3>
         <p className="muted" style={{ margin: 0 }}>
           {song.title} · {song.artist}
         </p>
         <div className="field">
-          <input autoFocus placeholder={jukebox ? "Nome" : "Nome del cantante"} value={name} onChange={(e) => setName(e.target.value)} maxLength={40} />
+          <Search size={18} />
+          <input
+            autoFocus
+            placeholder="Cerca tra gli utenti collegati (facoltativo)"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            maxLength={40}
+          />
         </div>
-        {recent.length > 0 && (
-          <div className="chips">
-            {recent.map((r) => (
-              <button type="button" key={r} className="chip" onClick={() => onConfirm(r)}>
-                {r}
+        <div className="singer-list">
+          {users === null ? (
+            <div className="muted">Carico gli utenti collegati…</div>
+          ) : shown.length ? (
+            shown.map((u) => (
+              <button type="button" key={u} className="singer-pick" onClick={() => onConfirm(u)}>
+                <Avatar name={u} className="xs" /> {u}
               </button>
-            ))}
-          </div>
-        )}
+            ))
+          ) : (
+            <div className="muted">
+              {users.length ? "Nessun utente collegato con questo nome." : "Nessun utente collegato dal telefono."}
+            </div>
+          )}
+        </div>
+        <p className="muted singer-hint">Se lasci vuoto, il brano viene aggiunto senza nome.</p>
         <div className="actions">
           <button type="button" className="btn btn-ghost" onClick={onCancel}>
             Annulla
           </button>
-          <button className="btn btn-primary">Aggiungi alla coda</button>
+          <button className="btn btn-primary">Aggiungi</button>
         </div>
       </form>
     </div>

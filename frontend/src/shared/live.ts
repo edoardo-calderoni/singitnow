@@ -5,6 +5,17 @@ import { setMode } from "./mode";
 
 type Listener = (event: string, data: any) => void;
 
+// Chi usa questo telefono: lo si comunica al PC a ogni connessione (lista "utenti collegati")
+let presenceName = "";
+let socket: WebSocket | null = null;
+const sendPresence = () => {
+  if (socket?.readyState === 1) socket.send(JSON.stringify({ hello: presenceName }));
+};
+export function setPresence(name: string) {
+  presenceName = name;
+  sendPresence();
+}
+
 /**
  * Stato condiviso in tempo reale (libreria + playlist) via WebSocket,
  * con riconnessione automatica e risincronizzazione completa a ogni connessione.
@@ -33,8 +44,10 @@ export function useLive(onEvent?: Listener) {
     const connect = () => {
       const proto = location.protocol === "https:" ? "wss" : "ws";
       ws = new WebSocket(`${proto}://${location.host}/ws`);
+      socket = ws;
       ws.onopen = () => {
         setConnected(true);
+        if (presenceName) sendPresence();
         refresh();
         ping = window.setInterval(() => ws?.readyState === 1 && ws.send("ping"), 20000);
       };

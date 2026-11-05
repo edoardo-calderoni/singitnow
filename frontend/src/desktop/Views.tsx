@@ -225,7 +225,7 @@ export function SearchView({
             <ArrowLeft size={16} /> Libreria
           </button>
           <h1>Aggiungi brano</h1>
-          <p className="muted">Cerca il video su YouTube: separiamo voce e musica e sincronizziamo il testo in automatico.</p>
+          <p className="muted">Scegli video ufficiali senza testo della canzone.</p>
         </div>
       </header>
       <form className="toolbar" onSubmit={run}>
@@ -260,7 +260,7 @@ export function SearchView({
                   <img src={r.thumbnail} alt="" loading="lazy" />
                 </div>
                 <div className="song-main">
-                  <div className="song-title ellipsis">{r.title}</div>
+                  <div className="song-title full-title">{r.title}</div>
                   <div className="song-sub">
                     <span className="song-artist ellipsis">{r.channel}</span>
                     <span className="song-duration">{fmtTime(r.duration)}</span>

@@ -732,7 +732,7 @@ function SearchTab({
                 <img src={r.thumbnail} alt="" loading="lazy" />
               </div>
               <div className="m-item-main">
-                <div className="m-item-title clamp2">{r.title}</div>
+                <div className="m-item-title full-title">{r.title}</div>
                 <div className="m-item-sub ellipsis">
                   {r.channel} · {fmtTime(r.duration)}
                 </div>

@@ -413,3 +413,13 @@ input[type="range"]::-webkit-slider-thumb {
   display: inline-grid;
   vertical-align: middle;
 }
+
+/* titolo sempre per intero (risultati della ricerca su YouTube): va a capo invece di troncarsi */
+.full-title {
+  display: block;
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
+  overflow-wrap: anywhere;
+  -webkit-line-clamp: unset;
+}

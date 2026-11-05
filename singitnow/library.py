@@ -34,6 +34,7 @@ class Song:
     status: str = QUEUED
     progress: float = 0.0
     step: str = "In coda"
+    eta: float = 0.0  # secondi stimati alla fine dell'elaborazione (0 = sconosciuto)
     error: str = ""
     lyrics_source: str = ""
     language: str = ""
@@ -47,7 +48,13 @@ class Song:
         d = asdict(self)
         base = f"/media/{self.id}"
         has_thumb = (self.dir / "thumb.jpg").exists()
-        d["thumbnail_url"] = f"{base}/thumb.jpg" if has_thumb else self.thumbnail
+        video_thumb = f"{base}/thumb.jpg" if has_thumb else self.thumbnail
+        # copertina del disco (iTunes); il numero cambia se la copertina viene riscaricata
+        cover = self.dir / "cover.jpg"
+        d["cover_url"] = f"{base}/cover.jpg?v={int(cover.stat().st_mtime)}" if cover.exists() else None
+        # immagine del brano ovunque: la copertina del disco, altrimenti il fotogramma di YouTube
+        d["thumbnail_url"] = d["cover_url"] or video_thumb
+        d["video_thumbnail_url"] = video_thumb
         if self.status == READY:
             d["media"] = {
                 "video": f"{base}/video.mp4",
@@ -76,7 +83,7 @@ class Library:
                     continue
                 # Un'elaborazione interrotta (app chiusa) va ripresa da capo.
                 if song.status not in (READY, ERROR):
-                    song.status, song.progress, song.step = QUEUED, 0.0, "In coda"
+                    song.status, song.progress, song.step, song.eta = QUEUED, 0.0, "In coda", 0.0
                 self._songs[song.id] = song
 
     def all(self) -> list[Song]:

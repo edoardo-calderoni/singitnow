@@ -27,6 +27,9 @@ npm install
 npm run build
 Pop-Location
 
+Write-Host "== Firewall (accesso dai telefoni) ==" -ForegroundColor Magenta
+& "$PSScriptRoot\firewall.ps1"
+
 Write-Host ""
 Write-Host "Fatto! Avvia SingITnow con SingITnow.bat" -ForegroundColor Green
-Write-Host "Al primo avvio Windows chiederà di consentire l'accesso alla rete: accetta (reti private) per far collegare i telefoni."
+Write-Host "PC e telefoni devono essere sulla stessa rete Wi-Fi, impostata in Windows come rete 'Privata'."

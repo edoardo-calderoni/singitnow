@@ -1,22 +1,39 @@
-import { useCallback, useEffect, useState } from "react";
-import { ChevronDown, ChevronUp, Library, ListMusic, Play, Smartphone, Trash2, Wifi, WifiOff, MonitorPlay } from "lucide-react";
-import { api, Entry, initials, Song } from "../shared/api";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { ChevronDown, ChevronUp, Library, ListMusic, Play, Smartphone, Trash2, Wifi, WifiOff } from "lucide-react";
+import { api, Entry, fmtEta, Song } from "../shared/api";
 import { useLive } from "../shared/live";
+import { Avatar } from "../shared/Avatar";
 import { EditDialog, SingerDialog } from "./Dialogs";
-import { Player } from "./Player";
+import { Player, setFullscreen } from "./Player";
+import { RequestEvent, RequestToasts, useRequests } from "./Requests";
+import { ApplauseLayer, useApplause } from "./Applause";
 import { LibraryView, SearchView } from "./Views";
 
 type Tab = "library" | "search";
 
 export function App() {
+  const requests = useRequests();
+  const applause = useApplause();
   const { songs, playlist, connected } = useLive((event, data) => {
     if (event === "player_command") window.dispatchEvent(new CustomEvent("player-command", { detail: data }));
+    else if (event === "request") requests.push(data as RequestEvent);
+    else if (event === "applause") applause.push(data.name);
+    else if (event === "show_qr") showQr(data?.seconds ?? 10);
   });
   const [tab, setTab] = useState<Tab>("library");
   const [info, setInfo] = useState<{ remote_url: string; qr_svg: string } | null>(null);
   const [toast, setToast] = useState("");
   const [queueFor, setQueueFor] = useState<Song | null>(null);
   const [editing, setEditing] = useState<Song | null>(null);
+  // QR code d'ingresso mostrato per qualche secondo nell'angolo (richiesto da un amministratore)
+  const [qrShown, setQrShown] = useState(false);
+  const qrTimer = useRef<number | undefined>(undefined);
+  function showQr(seconds: number) {
+    setQrShown(false); // riavvia l'animazione se arriva una nuova richiesta
+    window.clearTimeout(qrTimer.current);
+    requestAnimationFrame(() => setQrShown(true));
+    qrTimer.current = window.setTimeout(() => setQrShown(false), seconds * 1000);
+  }
 
   useEffect(() => {
     api.info().then(setInfo).catch(() => {});
@@ -42,6 +59,11 @@ export function App() {
 
   const now = playlist.now_playing;
   const nowSong = now?.song?.status === "ready" ? now : null;
+  const isPlaying = !!nowSong;
+  // fine della serata (player chiuso): via lo schermo intero attivato dall'avvio automatico
+  useEffect(() => {
+    if (!isPlaying) setFullscreen(false);
+  }, [isPlaying]);
   const nextEntry = playlist.entries[0];
 
   return (
@@ -54,12 +76,9 @@ export function App() {
             Sing<span className="grad-text">IT</span>now
           </span>
         </div>
-        <button className={`nav-item ${tab === "library" ? "active" : ""}`} onClick={() => setTab("library")}>
+        <button className="nav-item active" onClick={() => setTab("library")}>
           <Library size={22} /> Libreria
           {processing > 0 && <span className="nav-count">{processing}</span>}
-        </button>
-        <button className={`nav-item ${tab === "search" ? "active" : ""}`} onClick={() => setTab("search")}>
-          <MonitorPlay size={22} /> Cerca su YouTube
         </button>
 
         <div className="sidebar-spacer" />
@@ -90,7 +109,7 @@ export function App() {
             goSearch={() => setTab("search")}
           />
         ) : (
-          <SearchView songs={songs} onToast={setToast} />
+          <SearchView songs={songs} onToast={setToast} onBack={() => setTab("library")} />
         )}
       </main>
 
@@ -121,7 +140,7 @@ export function App() {
               </div>
               <div className="queue-main">
                 <div className="queue-singer">
-                  <span className="avatar xs">{initials(e.singer || "?")}</span>
+                  <Avatar name={e.singer} className="xs" />
                   <span className="ellipsis">{e.singer || "Ospite"}</span>
                 </div>
                 <div className="queue-song ellipsis">{e.song?.title}</div>
@@ -157,11 +176,11 @@ export function App() {
               </div>
               <div className="queue-main">
                 <div className="queue-singer">
-                  <span className="avatar xs">{initials(w.singer)}</span>
+                  <Avatar name={w.singer} className="xs" />
                   <span className="ellipsis">{w.singer}</span>
                 </div>
                 <div className="queue-song ellipsis">
-                  {w.song?.title} · <span className="muted">in preparazione {Math.round((w.song?.progress ?? 0) * 100)}%</span>
+                  {w.song?.title} · <span className="muted">in preparazione {Math.round((w.song?.progress ?? 0) * 100)}%{fmtEta(w.song) && ` · ${fmtEta(w.song)}`}</span>
                 </div>
               </div>
             </li>
@@ -182,7 +201,7 @@ export function App() {
           entry={nowSong}
           next={nextEntry}
           onClose={() => safe(() => api.stop())}
-          onNext={() => safe(() => (nextEntry ? api.playEntry() : api.stop()))}
+          onNext={() => safe(() => api.playEntry().catch(() => api.stop()))}
         />
       )}
 
@@ -199,6 +218,14 @@ export function App() {
         />
       )}
       {editing && <EditDialog song={editing} onClose={() => setEditing(null)} onToast={setToast} />}
+      <RequestToasts items={requests.items} />
+      {qrShown && info && (
+        <div className="qr-corner" aria-hidden>
+          <div className="qr-corner-code" dangerouslySetInnerHTML={{ __html: info.qr_svg }} />
+          <div className="qr-corner-text">Entra anche tu!</div>
+        </div>
+      )}
+      {nowSong && <ApplauseLayer bubbles={applause.bubbles} />}
       {toast && <div className="toast">{toast}</div>}
     </div>
   );

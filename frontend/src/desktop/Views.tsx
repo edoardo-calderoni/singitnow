@@ -12,8 +12,10 @@ import {
   Search,
   Trash2,
   MonitorPlay,
+  Plus,
+  ArrowLeft,
 } from "lucide-react";
-import { api, filterSongs, fmtTime, LANGUAGES, languageLabel, SearchResult, Song } from "../shared/api";
+import { api, filterSongs, fmtEta, fmtTime, LANGUAGES, languageLabel, SearchResult, Song } from "../shared/api";
 
 function StatusBadge({ song }: { song: Song }) {
   if (song.status === "ready") return null;
@@ -70,6 +72,9 @@ export function LibraryView({
             {songs.length > ready && ` · ${songs.length - ready} in elaborazione`}
           </p>
         </div>
+        <button className="btn btn-primary" onClick={goSearch}>
+          <Plus size={18} /> Aggiungi brano
+        </button>
       </header>
 
       <div className="toolbar">
@@ -97,7 +102,7 @@ export function LibraryView({
           <h3>La libreria è vuota</h3>
           <p>Cerca il primo brano su YouTube: lo scarichiamo e prepariamo base e testo in automatico.</p>
           <button className="btn btn-primary" onClick={goSearch}>
-            <MonitorPlay size={18} /> Cerca su YouTube
+            <Plus size={18} /> Aggiungi brano
           </button>
         </div>
       ) : shown.length === 0 ? (
@@ -131,6 +136,7 @@ export function LibraryView({
                       <div style={{ width: `${s.progress * 100}%` }} />
                     </div>
                     <span>{s.step}</span>
+                    {fmtEta(s) && <span className="song-eta">{fmtEta(s)}</span>}
                   </div>
                 )}
                 {s.status === "error" && <div className="song-error ellipsis">{s.error}</div>}
@@ -142,7 +148,7 @@ export function LibraryView({
                 {s.status === "ready" && (
                   <>
                     <button className="btn btn-primary btn-sm" onClick={() => onPlay(s)}>
-                      <Play size={15} fill="currentColor" /> Canta
+                      <Play size={15} fill="currentColor" /> Aggiungi
                     </button>
                     <button className="icon-btn" title="Aggiungi alla coda" onClick={() => onQueue(s)}>
                       <ListPlus size={20} />
@@ -175,7 +181,15 @@ export function LibraryView({
 }
 
 // ------------------------------------------------------------------ Ricerca YouTube
-export function SearchView({ songs, onToast }: { songs: Song[]; onToast: (m: string) => void }) {
+export function SearchView({
+  songs,
+  onToast,
+  onBack,
+}: {
+  songs: Song[];
+  onToast: (m: string) => void;
+  onBack: () => void;
+}) {
   const [q, setQ] = useState("");
   const [results, setResults] = useState<SearchResult[] | null>(null);
   const [busy, setBusy] = useState(false);
@@ -207,8 +221,11 @@ export function SearchView({ songs, onToast }: { songs: Song[]; onToast: (m: str
     <section className="view">
       <header className="view-head">
         <div>
-          <h1>Cerca su YouTube</h1>
-          <p className="muted">Scegli il video: separiamo voce e musica e sincronizziamo il testo in automatico.</p>
+          <button className="btn btn-ghost btn-sm back-btn" onClick={onBack}>
+            <ArrowLeft size={16} /> Libreria
+          </button>
+          <h1>Aggiungi brano</h1>
+          <p className="muted">Cerca il video su YouTube: separiamo voce e musica e sincronizziamo il testo in automatico.</p>
         </div>
       </header>
       <form className="toolbar" onSubmit={run}>
@@ -227,7 +244,7 @@ export function SearchView({ songs, onToast }: { songs: Song[]; onToast: (m: str
             <MonitorPlay size={34} />
           </div>
           <h3>Trova la tua canzone</h3>
-          <p>Suggerimento: aggiungi «official video» per avere il videoclip originale.</p>
+          <p>Suggerimento: Aggiungi video-clip che NON CONTENGONO IL TESTO DELLA CANZONE e se possibile ORIGINALI.</p>
         </div>
       ) : results.length === 0 ? (
         <div className="empty">
@@ -258,6 +275,7 @@ export function SearchView({ songs, onToast }: { songs: Song[]; onToast: (m: str
                   ) : s && s.status !== "error" ? (
                     <span className="badge work">
                       <Loader2 size={12} className="spin" /> {Math.round(s.progress * 100)}%
+                      {fmtEta(s) && <> · {fmtEta(s)}</>}
                     </span>
                   ) : (
                     <button className="btn btn-ghost btn-sm" onClick={() => add(r)}>

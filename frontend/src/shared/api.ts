@@ -6,10 +6,17 @@ export interface Song {
   title: string;
   artist: string;
   duration: number;
+  /** immagine del brano: copertina del disco se trovata, altrimenti fotogramma di YouTube */
   thumbnail_url: string;
+  /** copertina del disco (iTunes), se trovata */
+  cover_url?: string | null;
+  /** fotogramma del video YouTube */
+  video_thumbnail_url?: string;
   status: SongStatus;
   progress: number;
   step: string;
+  /** secondi stimati alla fine dell'elaborazione (0 = sconosciuto) */
+  eta: number;
   error: string;
   lyrics_source: string;
   language: string;
@@ -31,6 +38,8 @@ export interface Entry {
   song_id: string;
   singer: string;
   added_at: number;
+  /** avviata automaticamente perché la playlist era ferma */
+  auto?: boolean;
   song: Song | null;
 }
 
@@ -38,6 +47,17 @@ export interface PlaylistState {
   now_playing: Entry | null;
   entries: Entry[];
   waiting: { song_id: string; singer: string; song: Song | null }[];
+}
+
+/** Posizione del player sulla TV, comunicata ogni secondo. */
+export interface PlayerState {
+  song_id: string;
+  t: number;
+  duration: number;
+  playing: boolean;
+  offset: number;
+  vocals: number;
+  volume?: number; // volume generale (0..1)
 }
 
 export interface LyricWord {
@@ -57,10 +77,22 @@ export interface Lyrics {
   lines: LyricLine[];
 }
 
+/** Il gettone da amministratore (se c'è) accompagna ogni richiesta: abilita i comandi del player. */
+function authHeaders(body: unknown): Record<string, string> {
+  const h: Record<string, string> = body ? { "Content-Type": "application/json" } : {};
+  try {
+    const t = localStorage.getItem("sin.adminToken");
+    if (t) h["X-Admin-Token"] = t;
+  } catch {
+    /* storage non disponibile */
+  }
+  return h;
+}
+
 async function req<T>(method: string, url: string, body?: unknown): Promise<T> {
   const res = await fetch(url, {
     method,
-    headers: body ? { "Content-Type": "application/json" } : undefined,
+    headers: authHeaders(body),
     body: body ? JSON.stringify(body) : undefined,
   });
   if (!res.ok) {
@@ -96,12 +128,18 @@ export const api = {
     }),
   playlist: () => req<PlaylistState>("GET", "/api/playlist"),
   enqueue: (song_id: string, singer: string) => req<PlaylistState>("POST", "/api/playlist", { song_id, singer }),
-  unqueue: (entry_id: string) => req<PlaylistState>("DELETE", `/api/playlist/${entry_id}`),
+  unqueue: (entry_id: string, singer = "") =>
+    req<PlaylistState>("DELETE", `/api/playlist/${entry_id}?singer=${encodeURIComponent(singer)}`),
+  unqueueWaiting: (song_id: string, singer: string) =>
+    req<PlaylistState>("DELETE", `/api/playlist/waiting/${song_id}?singer=${encodeURIComponent(singer)}`),
   move: (entry_id: string, delta: number) => req<PlaylistState>("POST", `/api/playlist/${entry_id}/move`, { delta }),
   playEntry: (entry_id?: string) => req<PlaylistState>("POST", "/api/player/play", { entry_id }),
   playSong: (song_id: string, singer = "") => req<PlaylistState>("POST", "/api/player/play", { song_id, singer }),
   stop: () => req<PlaylistState>("POST", "/api/player/stop"),
-  command: (action: string, value?: number) => req("POST", "/api/player/command", { action, value }),
+  next: () => req<PlaylistState>("POST", "/api/player/next"),
+  showQr: () => req("POST", "/api/admin/qr"),
+  command: (action: string, value?: number, singer = "") => req("POST", "/api/player/command", { action, value, singer }),
+  playerState: (state: PlayerState) => req("POST", "/api/player/state", state),
 };
 
 export function fmtTime(sec: number): string {
@@ -141,4 +179,13 @@ export function filterSongs(songs: Song[], text: string, lang: string): Song[] {
     const hay = norm(`${s.title} ${s.artist}`);
     return terms.every((t) => hay.includes(t));
   });
+}
+
+/** Tempo residuo di elaborazione in forma leggibile ("≈ 2 min"), "" se sconosciuto. */
+export function fmtEta(song?: Pick<Song, "eta" | "status"> | null): string {
+  if (!song || !song.eta || song.status === "ready" || song.status === "error" || song.status === "queued") return "";
+  const s = song.eta;
+  if (s < 15) return "quasi pronto";
+  if (s < 60) return `≈ ${Math.ceil(s / 10) * 10} s`;
+  return `≈ ${Math.ceil(s / 60)} min`;
 }

@@ -8,13 +8,13 @@ import logging
 from contextlib import asynccontextmanager
 
 import segno
-from fastapi import FastAPI, HTTPException, WebSocket, WebSocketDisconnect
+from fastapi import Depends, FastAPI, Header, HTTPException, Request, WebSocket, WebSocketDisconnect
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import __version__, config, youtube
+from . import __version__, admin, avatars, config, youtube
 from .events import hub
 from .library import READY, library
 from .pipeline import pipeline
@@ -22,7 +22,7 @@ from .playlist import playlist
 
 log = logging.getLogger(__name__)
 
-MEDIA_FILES = {"video.mp4", "instrumental.m4a", "vocals.m4a", "thumb.jpg"}
+MEDIA_FILES = {"video.mp4", "instrumental.m4a", "vocals.m4a", "thumb.jpg", "cover.jpg"}
 
 
 @asynccontextmanager
@@ -33,6 +33,7 @@ async def lifespan(app: FastAPI):
     playlist.load()
     pipeline.on_ready(playlist.song_ready)
     pipeline.start()
+    pipeline.backfill_covers()
     yield
 
 
@@ -57,6 +58,29 @@ class MoveReq(BaseModel):
     delta: int
 
 
+class AdminLoginReq(BaseModel):
+    password: str
+    name: str = ""
+
+
+class ApplauseReq(BaseModel):
+    name: str
+
+
+class PlayerState(BaseModel):
+    song_id: str
+    t: float  # posizione nel brano (secondi)
+    duration: float
+    playing: bool
+    offset: float = 0.0  # correzione anticipo/ritardo del testo
+    vocals: float = 0.0  # volume della voce guida (0..1)
+    volume: float = 1.0  # volume generale, base + voce (0..1)
+
+
+# Ultima posizione comunicata dal player della TV (per tempi di attesa e testo sui telefoni)
+player_state: dict | None = None
+
+
 class PlayReq(BaseModel):
     entry_id: str | None = None
     song_id: str | None = None
@@ -71,6 +95,7 @@ class ResyncReq(BaseModel):
 class CommandReq(BaseModel):
     action: str
     value: float | None = None
+    singer: str = ""  # chi invia il comando dal telefono
 
 
 # ------------------------------------------------------------------ info
@@ -153,7 +178,8 @@ async def search(q: str):
     if not q:
         return []
     try:
-        results = await run_in_threadpool(youtube.search, q)
+        # in background si cerca il videoclip ufficiale (senza testo a schermo)
+        results = await run_in_threadpool(youtube.search, youtube.official_query(q))
     except Exception as e:
         log.exception("Ricerca fallita")
         raise HTTPException(502, f"Ricerca YouTube non riuscita: {e}")
@@ -185,19 +211,31 @@ def queue_song(req: QueueReq):
     return playlist.snapshot()
 
 
+@app.delete("/api/playlist/waiting/{song_id}")
+def unqueue_waiting(song_id: str, singer: str):
+    """Annulla la prenotazione di un brano ancora in preparazione (il brano resta in libreria)."""
+    playlist.remove_waiting(song_id, singer)
+    return playlist.snapshot()
+
+
 @app.delete("/api/playlist/{entry_id}")
-def unqueue(entry_id: str):
+def unqueue(entry_id: str, request: Request, singer: str = "", x_admin_token: str | None = Header(default=None)):
+    """Toglie un brano dalla coda: ognuno i propri, gli amministratori (e la TV) qualsiasi."""
+    if not admin.can_control(request, x_admin_token):
+        owner = playlist.singer_of(entry_id)
+        if owner is not None and owner != singer:
+            raise HTTPException(403, "Puoi togliere solo le tue prenotazioni")
     playlist.remove(entry_id)
     return playlist.snapshot()
 
 
-@app.post("/api/playlist/{entry_id}/move")
+@app.post("/api/playlist/{entry_id}/move", dependencies=[Depends(admin.require_control)])
 def move(entry_id: str, req: MoveReq):
     playlist.move(entry_id, req.delta)
     return playlist.snapshot()
 
 
-@app.post("/api/player/play")
+@app.post("/api/player/play", dependencies=[Depends(admin.require_control)])
 def play(req: PlayReq):
     if req.song_id:
         song = library.get(req.song_id)
@@ -210,19 +248,120 @@ def play(req: PlayReq):
     return playlist.snapshot()
 
 
-@app.post("/api/player/stop")
+@app.post("/api/player/stop", dependencies=[Depends(admin.require_control)])
 def stop():
+    global player_state
     playlist.stop()
+    player_state = None
+    hub.publish("player_state", None)
     return playlist.snapshot()
 
 
-@app.post("/api/player/command")
+@app.post("/api/player/next", dependencies=[Depends(admin.require_control)])
+def play_next():
+    """Passa al brano successivo; con la coda vuota ferma il brano in corso."""
+    if not playlist.play(None):
+        return stop()
+    return playlist.snapshot()
+
+
+@app.post("/api/player/state")
+def set_player_state(req: PlayerState):
+    """Il player della TV comunica periodicamente dove si trova."""
+    global player_state
+    player_state = req.model_dump()
+    hub.publish("player_state", player_state)
+    return {"ok": True}
+
+
+@app.post("/api/player/command", dependencies=[Depends(admin.require_control)])
 def command(req: CommandReq):
-    """Comandi dai telefoni verso il player (pausa, ripresa, volume voce)."""
-    if req.action not in {"pause", "resume", "toggle", "vocals", "restart"}:
+    """Comandi dagli amministratori verso il player (pausa, ripresa, volume voce)."""
+    if req.action not in {"pause", "resume", "toggle", "vocals", "volume", "restart"}:
         raise HTTPException(400, "Comando sconosciuto")
     hub.publish("player_command", req.model_dump())
     return {"ok": True}
+
+
+# ------------------------------------------------------------------ amministratori
+@app.post("/api/admin/login")
+def admin_login(req: AdminLoginReq):
+    token = admin.login(req.password, req.name)
+    if not token:
+        raise HTTPException(401, "Password non corretta")
+    return {"token": token}
+
+
+@app.get("/api/admin/check")
+def admin_check(x_admin_token: str | None = Header(default=None)):
+    return {"admin": admin.is_admin(x_admin_token)}
+
+
+@app.post("/api/admin/qr", dependencies=[Depends(admin.require_admin)])
+def admin_show_qr():
+    """Mostra per qualche secondo il QR code d'ingresso nell'angolo della TV."""
+    hub.publish("show_qr", {"seconds": 10})
+    return {"ok": True}
+
+
+@app.post("/api/admin/logout")
+def admin_logout(x_admin_token: str | None = Header(default=None)):
+    admin.logout(x_admin_token)
+    return {"admin": False}
+
+
+# ------------------------------------------------------------------ applausi
+_applause_log: dict[str, list[float]] = {}
+APPLAUSE_MAX = 8  # applausi per persona…
+APPLAUSE_WINDOW = 2.0  # …ogni 2 secondi: oltre si ignorano (la TV non viene sommersa da un solo telefono)
+
+
+@app.post("/api/applause")
+def applause(req: ApplauseReq):
+    """Un applauso dal telefono: sulla TV sale una bolla con la foto di chi applaude."""
+    import time
+
+    name = req.name.strip()[:40]
+    if not name or not playlist.now_playing:
+        return {"ok": False}
+    now = time.monotonic()
+    recent = [t for t in _applause_log.get(name, []) if now - t < APPLAUSE_WINDOW]
+    if len(recent) >= APPLAUSE_MAX:
+        return {"ok": False}
+    recent.append(now)
+    _applause_log[name] = recent
+    hub.publish("applause", {"name": name})
+    return {"ok": True}
+
+
+# ------------------------------------------------------------------ foto profilo
+@app.get("/api/avatars")
+def list_avatars():
+    return avatars.public_map()
+
+
+@app.get("/api/avatars/{name}")
+def get_avatar(name: str):
+    p = avatars.path(name)
+    if not p:
+        raise HTTPException(404)
+    return FileResponse(p, media_type="image/jpeg", headers={"Cache-Control": "public, max-age=31536000"})
+
+
+@app.put("/api/avatars/{name}")
+async def put_avatar(name: str, request: Request):
+    """Corpo della richiesta: la foto in JPEG (già ritagliata e ridotta dal telefono)."""
+    try:
+        avatars.save(name, await request.body())
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    return avatars.public_map()
+
+
+@app.delete("/api/avatars/{name}")
+def delete_avatar(name: str):
+    avatars.remove(name)
+    return avatars.public_map()
 
 
 # ------------------------------------------------------------------ realtime
@@ -231,6 +370,8 @@ async def ws(websocket: WebSocket):
     await hub.connect(websocket)
     try:
         await websocket.send_text(json.dumps({"event": "playlist", "data": playlist.snapshot()}))
+        await websocket.send_text(json.dumps({"event": "player_state", "data": player_state}))
+        await websocket.send_text(json.dumps({"event": "avatars", "data": avatars.public_map()}))
         while True:
             await websocket.receive_text()  # keep-alive dal client
     except WebSocketDisconnect:

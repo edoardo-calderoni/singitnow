@@ -40,10 +40,18 @@ class JsApi:
 
     def __init__(self) -> None:
         self._window = None  # privato: pywebview non deve esplorarlo
+        self._fullscreen = False
 
     def toggle_fullscreen(self) -> None:
         if self._window:
             self._window.toggle_fullscreen()
+            self._fullscreen = not self._fullscreen
+            if not self._fullscreen:
+                self._window.maximize()  # uscendo dallo schermo intero si torna massimizzati
+
+    def set_fullscreen(self, on: bool) -> None:
+        if bool(on) != self._fullscreen:
+            self.toggle_fullscreen()
 
 
 def main() -> None:
@@ -76,11 +84,30 @@ def main() -> None:
         except KeyboardInterrupt:
             pass
     else:
+        import os
+
         import webview
+
+        # Browser integrato (WebView2): l'audio parte anche se il brano viene avviato dal telefono
+        # senza un clic sulla finestra, e la pagina non viene rallentata se la finestra è in
+        # secondo piano o ridotta a icona (altrimenti la coda potrebbe non avanzare).
+        os.environ.setdefault(
+            "WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS",
+            "--disable-features=ElasticOverscroll --autoplay-policy=no-user-gesture-required"
+            " --disable-background-timer-throttling --disable-renderer-backgrounding"
+            " --disable-backgrounding-occluded-windows",
+        )
 
         api = JsApi()
         api._window = webview.create_window(
-            APP_NAME, url, width=1360, height=860, min_size=(1024, 680), background_color="#0b0b14", js_api=api
+            APP_NAME,
+            url,
+            width=1360,  # dimensioni usate quando l'utente "ripristina" la finestra
+            height=860,
+            min_size=(1024, 680),
+            maximized=True,  # si apre sempre a tutto lo schermo (barra del titolo visibile)
+            background_color="#0b0b14",
+            js_api=api,
         )
         webview.start(gui="edgechromium", private_mode=False)
     server.should_exit = True

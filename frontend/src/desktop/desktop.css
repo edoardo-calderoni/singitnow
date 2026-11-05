@@ -210,8 +210,8 @@ body {
   border-color: var(--border);
 }
 .song-cover {
-  width: 160px;
-  aspect-ratio: 16 / 9;
+  width: 96px;
+  aspect-ratio: 1; /* copertina del disco */
   border-radius: 12px;
 }
 .cover-play {
@@ -776,9 +776,203 @@ body {
     width: 230px;
   }
   .song-cover {
-    width: 128px;
+    width: 84px;
   }
   .mixer-label {
     display: none;
   }
+}
+
+.song-progress .song-eta {
+  color: var(--text-2);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ------------------------------------------------ avvisi "Richiesta di …" (leggibili dalla TV) */
+.requests {
+  position: fixed;
+  top: 2.4vh;
+  left: 2.6vw;
+  z-index: 60; /* sopra il player, sotto dialoghi e toast */
+  display: flex;
+  flex-direction: column;
+  gap: 1vh;
+  pointer-events: none;
+}
+.request {
+  display: flex;
+  align-items: center;
+  gap: 1.1vw;
+  width: clamp(360px, 30vw, 800px);
+  padding: 1vw 1.3vw;
+  border-radius: 1.3vw;
+  background: rgba(16, 16, 30, 0.86);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  backdrop-filter: blur(14px);
+  box-shadow: 0 1vw 3vw rgba(0, 0, 0, 0.5);
+  animation: request-in 0.5s cubic-bezier(0.2, 0.9, 0.3, 1.2);
+}
+.request.leaving {
+  animation: request-out 0.4s ease-in forwards;
+}
+.request-art {
+  position: relative;
+  flex: none;
+}
+.request-cover {
+  width: clamp(60px, 5vw, 140px);
+  height: clamp(60px, 5vw, 140px);
+  border-radius: 0.7vw;
+  display: grid;
+  place-items: center;
+  color: var(--text-3);
+}
+.request-avatar {
+  position: absolute;
+  right: -0.5vw;
+  bottom: -0.5vw;
+  width: clamp(28px, 2.2vw, 60px);
+  height: clamp(28px, 2.2vw, 60px);
+  font-size: clamp(11px, 0.85vw, 22px);
+  border: 2px solid rgb(16, 16, 30);
+}
+.request-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.3vw;
+}
+.request-who {
+  font-size: clamp(14px, 1.1vw, 30px);
+  color: var(--text-2);
+}
+.request-who b {
+  font-weight: 700;
+  background: var(--grad);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+.request-title {
+  font-family: var(--font-display);
+  font-size: clamp(20px, 1.75vw, 48px);
+  font-weight: 700;
+}
+.request-meta {
+  font-size: clamp(13px, 1vw, 28px);
+  color: var(--text-3);
+}
+@keyframes request-in {
+  from {
+    opacity: 0;
+    transform: translateX(-2vw) scale(0.96);
+  }
+}
+@keyframes request-out {
+  to {
+    opacity: 0;
+    transform: translateX(-2vw);
+  }
+}
+
+/* ------------------------------------------------ applausi (come i cuori nelle live) */
+.applause {
+  position: fixed;
+  top: 0;
+  right: 1.5vw;
+  z-index: 58; /* sopra il player, sotto gli avvisi di richiesta */
+  width: 16vw;
+  height: 62vh;
+  pointer-events: none;
+  overflow: visible;
+}
+.clap {
+  position: absolute;
+  bottom: 0;
+  width: clamp(54px, 4.4vw, 120px);
+  height: clamp(54px, 4.4vw, 120px);
+  margin-left: calc(clamp(54px, 4.4vw, 120px) / -2);
+  animation: clap-rise var(--dur) cubic-bezier(0.25, 0.6, 0.4, 1) forwards;
+  will-change: transform, opacity;
+}
+.clap-avatar.avatar {
+  width: 100%;
+  height: 100%;
+  font-size: clamp(18px, 1.5vw, 40px);
+  border: 3px solid rgba(255, 255, 255, 0.85);
+  box-shadow: 0 0.6vw 1.6vw rgba(0, 0, 0, 0.45);
+}
+.clap-icon {
+  position: absolute;
+  right: -18%;
+  bottom: -14%;
+  font-size: clamp(24px, 2.1vw, 58px);
+  line-height: 1;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.5));
+}
+@keyframes clap-rise {
+  0% {
+    transform: translate(0, 0) scale(calc(var(--size) * 0.4));
+    opacity: 0;
+  }
+  12% {
+    transform: translate(calc(var(--drift) * 0.15), -6vh) scale(var(--size));
+    opacity: 1;
+  }
+  60% {
+    opacity: 0.95;
+  }
+  100% {
+    transform: translate(var(--drift), -58vh) scale(calc(var(--size) * 0.85));
+    opacity: 0;
+  }
+}
+
+/* ---------- QR code d'ingresso nell'angolo (10 s, su richiesta di un amministratore) */
+.qr-corner {
+  position: fixed;
+  top: 2.4vh;
+  right: 1.5vw;
+  z-index: 59; /* sopra player e applausi, sotto gli avvisi di richiesta */
+  width: clamp(130px, 8.5vw, 230px);
+  padding: 0.5vw;
+  border-radius: 1vw;
+  background: rgba(10, 8, 20, 0.72);
+  backdrop-filter: blur(10px);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.45);
+  pointer-events: none;
+  animation: qr-corner 10s ease forwards;
+}
+.qr-corner-code svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 0.6vw;
+}
+.qr-corner-text {
+  margin-top: 0.4vw;
+  text-align: center;
+  font-size: clamp(11px, 0.75vw, 18px);
+  font-weight: 700;
+  color: white;
+}
+@keyframes qr-corner {
+  0% {
+    opacity: 0;
+    transform: translateY(-8px);
+  }
+  5%,
+  92% {
+    opacity: 1;
+    transform: none;
+  }
+  100% {
+    opacity: 0;
+  }
+}
+
+.back-btn {
+  margin-bottom: 10px;
 }

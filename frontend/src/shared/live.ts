@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
-import { api, PlaylistState, Song } from "./api";
+import { api, PlayerState, PlaylistState, Song } from "./api";
+import { setAvatars } from "./Avatar";
 
 type Listener = (event: string, data: any) => void;
 
@@ -11,6 +12,9 @@ export function useLive(onEvent?: Listener) {
   const [songs, setSongs] = useState<Song[]>([]);
   const [playlist, setPlaylist] = useState<PlaylistState>({ now_playing: null, entries: [], waiting: [] });
   const [connected, setConnected] = useState(false);
+  const [synced, setSynced] = useState(false); // true dopo aver ricevuto la prima playlist dal server
+  // stato del player + istante locale di ricezione, per stimare la posizione tra un aggiornamento e l'altro
+  const [player, setPlayer] = useState<{ state: PlayerState; at: number } | null>(null);
   const listener = useRef(onEvent);
   listener.current = onEvent;
 
@@ -47,6 +51,11 @@ export function useLive(onEvent?: Listener) {
           setSongs((prev) => prev.filter((s) => s.id !== data.id));
         } else if (event === "playlist") {
           setPlaylist(data);
+          setSynced(true);
+        } else if (event === "avatars") {
+          setAvatars(data);
+        } else if (event === "player_state") {
+          setPlayer(data ? { state: data, at: performance.now() } : null);
         }
         listener.current?.(event, data);
       };
@@ -65,5 +74,15 @@ export function useLive(onEvent?: Listener) {
     };
   }, []);
 
-  return { songs, playlist, connected, setPlaylist };
+  return { songs, playlist, connected, setPlaylist, player, synced };
+}
+
+export type LivePlayer = ReturnType<typeof useLive>["player"];
+
+/** Posizione attuale stimata del brano sulla TV (secondi). */
+export function playerTime(p: LivePlayer): number {
+  if (!p) return 0;
+  const { t, playing, duration } = p.state;
+  const now = playing ? t + (performance.now() - p.at) / 1000 : t;
+  return Math.min(now, duration || now);
 }

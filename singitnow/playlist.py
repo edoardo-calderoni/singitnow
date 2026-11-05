@@ -19,6 +19,7 @@ class Entry:
     song_id: str
     singer: str
     added_at: float = field(default_factory=time.time)
+    auto: bool = False  # avviata automaticamente (playlist ferma): la TV passa a schermo intero
 
 
 class Playlist:
@@ -42,6 +43,15 @@ class Playlist:
     def _save(self) -> None:
         data = {"entries": [asdict(e) for e in self._entries], "waiting": self._waiting}
         self._file.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+
+    def _autostart(self) -> Entry | None:
+        """Se non sta suonando niente, la prima richiesta in coda parte subito (da chiamare col lock)."""
+        if self.now_playing is not None or not self._entries:
+            return None
+        entry = self._entries.pop(0)
+        entry.auto = True
+        self.now_playing = entry
+        return entry
 
     def _changed(self) -> None:
         self._save()
@@ -74,9 +84,13 @@ class Playlist:
             song = library.get(song_id)
             if song and song.status == READY:
                 self._entries.append(Entry(uuid.uuid4().hex[:10], song_id, singer))
+                position = -1 if self._autostart() else len(self._entries)  # -1 = parte subito
             else:
                 self._waiting.setdefault(song_id, []).append(singer)
+                position = 0  # in preparazione
             self._changed()
+        # Avviso sulla TV: "Richiesta di <nome>"
+        hub.publish("request", {"singer": singer, "position": position, "song": song.to_public() if song else None})
 
     def song_ready(self, song: Song | None) -> None:
         if song is None:
@@ -85,10 +99,17 @@ class Playlist:
             singers = self._waiting.pop(song.id, [])
             for singer in singers:
                 self._entries.append(Entry(uuid.uuid4().hex[:10], song.id, singer))
+            if singers:
+                self._autostart()
         if singers:
             self._changed()
         else:
             hub.publish("playlist", self.snapshot())
+
+    def singer_of(self, entry_id: str) -> str | None:
+        """Chi ha prenotato la voce in coda (None se non c'è)."""
+        with self._lock:
+            return next((e.singer for e in self._entries if e.id == entry_id), None)
 
     def remove(self, entry_id: str) -> None:
         with self._lock:
@@ -127,6 +148,16 @@ class Playlist:
         with self._lock:
             self.now_playing = None
             self._changed()
+
+    def remove_waiting(self, song_id: str, singer: str) -> None:
+        """Annulla la prenotazione di un brano ancora in preparazione."""
+        with self._lock:
+            singers = self._waiting.get(song_id, [])
+            if singer in singers:
+                singers.remove(singer)  # una sola prenotazione per volta
+                if not singers:
+                    self._waiting.pop(song_id, None)
+                self._changed()
 
     def forget_song(self, song_id: str) -> None:
         with self._lock:

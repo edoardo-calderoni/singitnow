@@ -3,7 +3,7 @@ import {
   Maximize,
   Mic,
   MicOff,
-  Music2,
+  Volume2,
   Pause,
   Play,
   RotateCcw,
@@ -14,8 +14,10 @@ import {
 import { api, Entry, fmtTime, LyricLine } from "../shared/api";
 import { KaraokeEngine } from "../shared/engine";
 import { LyricsView } from "./LyricsView";
+import { Avatar } from "../shared/Avatar";
 
 const UPCOMING_WINDOW = 30; // secondi prima della fine in cui annunciare il prossimo brano
+const BACK_TO_HOME = 8; // a fine playlist: secondi di applausi prima di tornare alla schermata principale
 
 function stored(key: string, def: number): number {
   const v = parseFloat(localStorage.getItem(key) ?? "");
@@ -24,14 +26,28 @@ function stored(key: string, def: number): number {
 
 declare global {
   interface Window {
-    pywebview?: { api?: { toggle_fullscreen?: () => void } };
+    pywebview?: { api?: { toggle_fullscreen?: () => void; set_fullscreen?: (on: boolean) => void } };
   }
 }
 
 function toggleFullscreen() {
+  autoFullscreen = false; // da qui in poi decide l'utente
   if (window.pywebview?.api?.toggle_fullscreen) window.pywebview.api.toggle_fullscreen();
   else if (document.fullscreenElement) document.exitFullscreen();
   else document.documentElement.requestFullscreen().catch(() => {});
+}
+
+/** true se lo schermo intero è stato attivato da un avvio automatico (va tolto a fine serata). */
+let autoFullscreen = false;
+
+/** Schermo intero sì/no (nella finestra nativa non serve un clic; nel browser può essere negato). */
+export function setFullscreen(on: boolean) {
+  if (on) autoFullscreen = true;
+  else if (!autoFullscreen) return;
+  else autoFullscreen = false;
+  if (window.pywebview?.api?.set_fullscreen) window.pywebview.api.set_fullscreen(on);
+  else if (on && !document.fullscreenElement) document.documentElement.requestFullscreen().catch(() => {});
+  else if (!on && document.fullscreenElement) document.exitFullscreen().catch(() => {});
 }
 
 interface Props {
@@ -53,12 +69,20 @@ export function Player({ entry, next, onClose, onNext }: Props) {
   const [playing, setPlaying] = useState(false);
   const [ended, setEnded] = useState(false);
   const [vocals, setVocals] = useState(() => stored("sin.vocals", 0.15));
-  const [music, setMusic] = useState(() => stored("sin.music", 1));
+  const [volume, setVolume] = useState(() => stored("sin.volume", 1));
   const [offset, setOffset] = useState(() => stored(`sin.offset.${song.id}`, 0));
   const [controls, setControls] = useState(true);
   const hideTimer = useRef<number>(undefined);
   const nextRef = useRef(next);
   nextRef.current = next;
+  // sempre l'ultima versione: la fine del brano è gestita da un callback creato all'avvio
+  const onNextRef = useRef(onNext);
+  onNextRef.current = onNext;
+
+  // Avviato da solo perché la playlist era ferma: schermo intero
+  useEffect(() => {
+    if (entry.auto) setFullscreen(true);
+  }, [entry.id, entry.auto]);
 
   // ------------------------------------------------------------ caricamento
   useEffect(() => {
@@ -70,7 +94,7 @@ export function Player({ entry, next, onClose, onNext }: Props) {
 
     engine.onEnded = () => {
       setPlaying(false);
-      if (nextRef.current) onNext();
+      if (nextRef.current) onNextRef.current();
       else setEnded(true);
     };
 
@@ -83,7 +107,7 @@ export function Player({ entry, next, onClose, onNext }: Props) {
         setDuration(engine.duration);
         setLoading(1);
         engine.setVocalVolume(vocals);
-        engine.setMusicVolume(music);
+        engine.setMasterVolume(volume);
         // ?seek=120 nell'URL: parte da quel secondo (utile per test e prove)
         const startAt = parseFloat(new URLSearchParams(location.search).get("seek") ?? "");
         if (startAt > 0) engine.seek(startAt);
@@ -109,12 +133,53 @@ export function Player({ entry, next, onClose, onNext }: Props) {
     localStorage.setItem("sin.vocals", String(vocals));
   }, [vocals]);
   useEffect(() => {
-    engineRef.current?.setMusicVolume(music);
-    localStorage.setItem("sin.music", String(music));
-  }, [music]);
+    engineRef.current?.setMasterVolume(volume);
+    localStorage.setItem("sin.volume", String(volume));
+  }, [volume]);
   useEffect(() => {
     localStorage.setItem(`sin.offset.${song.id}`, String(offset));
   }, [offset, song.id]);
+
+  // ------------------------------------------------------------ posizione per i telefoni
+  // (tempo di attesa "Il tuo turno sarà fra…" e testo in tempo reale sullo smartphone)
+  const offsetRef = useRef(offset);
+  offsetRef.current = offset;
+  const vocalsRef = useRef(vocals);
+  vocalsRef.current = vocals;
+  const volumeRef = useRef(volume);
+  volumeRef.current = volume;
+  const report = useCallback(() => {
+    const e = engineRef.current;
+    if (!e || !e.duration) return;
+    api
+      .playerState({ song_id: song.id, t: e.currentTime, duration: e.duration, playing: e.playing, offset: offsetRef.current, vocals: vocalsRef.current, volume: volumeRef.current })
+      .catch(() => {});
+  }, [song.id]);
+  useEffect(() => {
+    if (loading < 1) return;
+    report();
+    const id = window.setInterval(report, 1000);
+    return () => window.clearInterval(id);
+  }, [loading, playing, offset, vocals, volume, report]);
+
+  // Brano finito con la coda vuota: qualche secondo di applausi, poi si torna alla schermata
+  // principale. Se nel frattempo arriva una prenotazione, si riparte direttamente con quella.
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+  const [backIn, setBackIn] = useState(BACK_TO_HOME);
+  useEffect(() => {
+    if (!ended) return;
+    if (next) {
+      const id = window.setTimeout(() => onNextRef.current(), 3000);
+      return () => window.clearTimeout(id);
+    }
+    setBackIn(BACK_TO_HOME);
+    const id = window.setInterval(() => setBackIn((s) => s - 1), 1000);
+    return () => window.clearInterval(id);
+  }, [ended, next]);
+  useEffect(() => {
+    if (ended && !next && backIn <= 0) onCloseRef.current();
+  }, [ended, next, backIn]);
 
   // ------------------------------------------------------------ comandi
   const toggle = useCallback(() => {
@@ -125,11 +190,15 @@ export function Player({ entry, next, onClose, onNext }: Props) {
     setEnded(false);
   }, []);
 
-  const seek = useCallback((to: number) => {
-    engineRef.current?.seek(to);
-    setT(to);
-    setEnded(false);
-  }, []);
+  const seek = useCallback(
+    (to: number) => {
+      engineRef.current?.seek(to);
+      setT(to);
+      setEnded(false);
+      report();
+    },
+    [report],
+  );
 
   const restart = useCallback(() => {
     const e = engineRef.current;
@@ -186,6 +255,7 @@ export function Player({ entry, next, onClose, onNext }: Props) {
       if (action === "toggle") e.toggle();
       if (action === "restart") restart();
       if (action === "vocals" && typeof value === "number") setVocals(Math.max(0, Math.min(1, value)));
+      if (action === "volume" && typeof value === "number") setVolume(Math.max(0, Math.min(1, value)));
       setTimeout(() => setPlaying(e.playing), 120);
       wake();
     };
@@ -209,7 +279,7 @@ export function Player({ entry, next, onClose, onNext }: Props) {
       {/* intestazione */}
       <header className="player-top">
         <div className="now-singer">
-          <div className="avatar big">{(entry.singer || "?").slice(0, 1).toUpperCase()}</div>
+          <Avatar name={entry.singer} className="big" />
           <div>
             <div className="eyebrow">{entry.singer ? `Ora canta ${entry.singer}` : "Karaoke"}</div>
             <div className="player-title">
@@ -233,7 +303,12 @@ export function Player({ entry, next, onClose, onNext }: Props) {
             <div className="upcoming-title ellipsis">{next!.song!.title}</div>
             <div className="upcoming-meta ellipsis">
               {next!.song!.artist}
-              {next!.singer && <> · canta <b>{next!.singer}</b></>}
+              {next!.singer && (
+                <>
+                  {" "}
+                  · canta <Avatar name={next!.singer} className="xs inline" /> <b>{next!.singer}</b>
+                </>
+              )}
             </div>
             <div className="progress">
               <div style={{ width: `${Math.min(100, (1 - remaining / UPCOMING_WINDOW) * 100)}%` }} />
@@ -274,6 +349,7 @@ export function Player({ entry, next, onClose, onNext }: Props) {
               Torna alla libreria
             </button>
           </div>
+          {!next && backIn > 0 && <p className="muted">Coda finita: torno alla schermata principale tra {backIn} s</p>}
         </div>
       )}
 
@@ -322,17 +398,17 @@ export function Player({ entry, next, onClose, onNext }: Props) {
               />
               <span className="mixer-val">{Math.round(vocals * 100)}%</span>
             </label>
-            <label className="mixer" title="Volume base musicale">
-              <Music2 size={18} className="muted" />
-              <span className="mixer-label">Musica</span>
+            <label className="mixer" title="Volume generale (musica e voce)">
+              <Volume2 size={18} className="muted" />
+              <span className="mixer-label">Volume</span>
               <input
                 type="range"
                 min={0}
                 max={1}
                 step={0.01}
-                value={music}
-                style={{ ["--val" as string]: `${music * 100}%` }}
-                onChange={(e) => setMusic(parseFloat(e.target.value))}
+                value={volume}
+                style={{ ["--val" as string]: `${volume * 100}%` }}
+                onChange={(e) => setVolume(parseFloat(e.target.value))}
               />
             </label>
           </div>

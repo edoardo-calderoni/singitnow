@@ -1,28 +1,12 @@
-import { memo } from "react";
+import { memo, useMemo } from "react";
 import type { LyricLine } from "../shared/api";
-
-const LEAD = 0.9; // anticipo con cui la riga appare prima di essere cantata
-
-/** Indice della riga "attiva": l'ultima iniziata (con anticipo). */
-function activeIndex(lines: LyricLine[], t: number): number {
-  let lo = 0,
-    hi = lines.length - 1,
-    ans = -1;
-  while (lo <= hi) {
-    const mid = (lo + hi) >> 1;
-    if (lines[mid]!.start - LEAD <= t) {
-      ans = mid;
-      lo = mid + 1;
-    } else hi = mid - 1;
-  }
-  return ans;
-}
+import { activeIndex, switchTimes, wordFill } from "../shared/lyrics";
 
 function Line({ line, t, dim }: { line: LyricLine; t: number; dim?: boolean }) {
   return (
     <div className={`lyric-line ${dim ? "next" : "current"}`}>
       {line.words.map((w, i) => {
-        const p = dim ? 0 : Math.max(0, Math.min(1, (t - w.s) / Math.max(w.e - w.s, 0.05)));
+        const p = dim ? 0 : wordFill(w, t);
         return (
           <span key={i} className="lyric-word" style={{ ["--p" as string]: `${(p * 100).toFixed(1)}%` }}>
             {w.t}
@@ -39,6 +23,7 @@ function Line({ line, t, dim }: { line: LyricLine; t: number; dim?: boolean }) {
  * mostra un conto alla rovescia verso la prossima strofa.
  */
 export const LyricsView = memo(function LyricsView({ lines, t }: { lines: LyricLine[]; t: number }) {
+  const times = useMemo(() => switchTimes(lines), [lines]);
   if (!lines.length) {
     return (
       <div className="lyrics">
@@ -46,7 +31,7 @@ export const LyricsView = memo(function LyricsView({ lines, t }: { lines: LyricL
       </div>
     );
   }
-  let i = activeIndex(lines, t);
+  const i = activeIndex(times, t);
   const cur = i >= 0 ? lines[i]! : null;
   const next = lines[i + 1];
 

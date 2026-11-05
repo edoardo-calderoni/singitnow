@@ -38,6 +38,49 @@ def _best_thumbnail(entry: dict) -> str:
     return thumbs[-1]["url"] if thumbs else ""
 
 
+# Parole tipiche dei titoli inglesi e italiani, per capire in che lingua è la canzone cercata
+_EN_WORDS = set(
+    "the a an you your i i'm im me my mine we us our they he she it it's is are am was were be been "
+    "and or but of in on at to for with from by up down out over all no not don't dont can't cant won't "
+    "love baby heart night day time life world girl boy man woman dance dream fire rain sun light "
+    "like just never ever forever again tonight home want need know feel get got go gonna wanna "
+    "what when where why who how this that these those one more yeah oh".split()
+)
+_IT_WORDS = set(
+    "il lo la i gli le un uno una di del della dei delle da dal dalla in nel nella con su sul sulla per "
+    "tra fra e ed o ma che chi non più piu mi ti si ci vi me te noi voi lui lei loro mio mia tuo tua "
+    "suo sua sei sono è e' era siamo ho hai ha come quando dove perché perche cosa tutto tutti tutta "
+    "amore cuore notte giorno vita mondo sole mare cielo sempre mai ancora ora adesso domani ieri "
+    "bella bello ragazza ragazzo vorrei voglio senza dentro fuori casa anima particolari".split()
+)
+_ALREADY = re.compile(r"\b(official|ufficiale|videoclip|video\s*clip)\b", re.I)
+
+
+def is_english(query: str) -> bool:
+    """Stima se la ricerca riguarda una canzone con titolo inglese (in dubbio: italiano)."""
+    words = re.findall(r"[a-zàèéìíòóùú']+", query.lower())
+    if re.search(r"[àèéìíòóùú]", query.lower()):
+        return False
+    en = sum(w in _EN_WORDS or (len(w) > 4 and w.endswith("ing")) for w in words)
+    it = sum(w in _IT_WORDS for w in words)
+    if en != it:
+        return en > it
+    # nessun indizio dalle parole: in italiano quasi tutte le parole finiscono per vocale
+    long = [w for w in words if len(w) > 2]
+    if not long:
+        return False
+    vowel_end = sum(w[-1] in "aeiou" for w in long) / len(long)
+    return vowel_end < 0.5
+
+
+def official_query(query: str) -> str:
+    """Aggiunge "Video ufficiale" (o "Official video" per titoli inglesi) per favorire il videoclip originale."""
+    query = query.strip()
+    if not query or _ALREADY.search(query):
+        return query
+    return f"{query} {'Official video' if is_english(query) else 'Video ufficiale'}"
+
+
 def search(query: str, limit: int = 12) -> list[dict[str, Any]]:
     opts = _base_opts() | {"extract_flat": "in_playlist", "skip_download": True}
     with yt_dlp.YoutubeDL(opts) as ydl:

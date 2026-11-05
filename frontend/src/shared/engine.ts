@@ -7,18 +7,21 @@ export class KaraokeEngine {
   private ctx = new AudioContext({ latencyHint: "playback" });
   private music = this.ctx.createGain();
   private vocals = this.ctx.createGain();
+  private master = this.ctx.createGain(); // volume generale (base + voce)
   private buffers: { music?: AudioBuffer; vocals?: AudioBuffer } = {};
   private sources: AudioBufferSourceNode[] = [];
   private startedAt = 0; // ctx.currentTime corrispondente a offset 0
   private offset = 0; // posizione quando in pausa
   private raf = 0;
+  private endTimer: number | undefined;
   playing = false;
   duration = 0;
   onEnded?: () => void;
 
   constructor(private video: HTMLVideoElement) {
-    this.music.connect(this.ctx.destination);
-    this.vocals.connect(this.ctx.destination);
+    this.music.connect(this.master);
+    this.vocals.connect(this.master);
+    this.master.connect(this.ctx.destination);
     video.muted = true;
     this.tick = this.tick.bind(this);
   }
@@ -45,8 +48,9 @@ export class KaraokeEngine {
   setVocalVolume(v: number) {
     this.vocals.gain.setTargetAtTime(v, this.ctx.currentTime, 0.03);
   }
-  setMusicVolume(v: number) {
-    this.music.gain.setTargetAtTime(v, this.ctx.currentTime, 0.03);
+  /** Volume generale: abbassa o alza insieme base musicale e voce guida. */
+  setMasterVolume(v: number) {
+    this.master.gain.setTargetAtTime(v, this.ctx.currentTime, 0.03);
   }
 
   async play() {
@@ -63,6 +67,10 @@ export class KaraokeEngine {
     });
     this.startedAt = when - this.offset;
     this.playing = true;
+    // Fine brano: non affidarsi solo ai fotogrammi (sospesi se la finestra è ridotta a icona).
+    this.sources[0]!.onended = () => this.checkEnd();
+    window.clearTimeout(this.endTimer);
+    this.endTimer = window.setTimeout(() => this.checkEnd(), (this.duration - this.offset + 0.3) * 1000);
     this.video.currentTime = this.offset;
     this.video.play().catch(() => {});
     cancelAnimationFrame(this.raf);
@@ -99,7 +107,19 @@ export class KaraokeEngine {
     this.ctx.close();
   }
 
+  private checkEnd() {
+    if (this.playing && this.currentTime >= this.duration - 0.3) this.finish();
+  }
+
+  private finish() {
+    window.clearTimeout(this.endTimer);
+    this.pause();
+    this.offset = this.duration;
+    this.onEnded?.();
+  }
+
   private stopSources() {
+    window.clearTimeout(this.endTimer);
     for (const s of this.sources) {
       s.onended = null;
       try {
@@ -116,9 +136,7 @@ export class KaraokeEngine {
     if (!this.playing) return;
     const t = this.currentTime;
     if (t >= this.duration - 0.02) {
-      this.pause();
-      this.offset = this.duration;
-      this.onEnded?.();
+      this.finish();
       return;
     }
     const v = this.video;

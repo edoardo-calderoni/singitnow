@@ -21,7 +21,13 @@ Karaoke tra amici: il PC collegato alla TV fa da palco, i partecipanti prenotano
 powershell -ExecutionPolicy Bypass -File setup.ps1
 ```
 
-Poi avvia con **`SingITnow.bat`**. Al primo avvio Windows chiede di consentire l'accesso alla rete: accetta per le reti private, altrimenti i telefoni non si collegano.
+Poi avvia con **`SingITnow.bat`**.
+
+Il setup apre nel firewall di Windows la porta 8765, solo sulle reti private. Se inquadrando il QR code il telefono resta su una pagina nera o non carica:
+
+- esegui `powershell -ExecutionPolicy Bypass -File firewall.ps1` (chiede i permessi di amministratore);
+- controlla che la rete Wi-Fi sia impostata come **Privata** in Windows;
+- verifica che telefono e PC siano sulla stessa rete (niente rete ospiti).
 
 Al primo brano elaborato vengono scaricati i modelli AI (circa 550 MB) in `data/models/`.
 
@@ -55,11 +61,11 @@ Il player riproduce base e voce con la Web Audio API, sincronizzate al campione,
 
 | Dove | Cosa |
 |---|---|
-| **Libreria** | Ricerca per titolo/artista, filtro lingua, *Canta* (avvio immediato), aggiunta in coda, ✏️ per correggere artista/titolo/lingua e rigenerare il testo |
-| **Cerca su YouTube** | Cerca e *Aggiungi alla libreria*: l'elaborazione parte in background |
+| **Libreria** | Ricerca per titolo/artista, filtro lingua, *Aggiungi* (avvio immediato), aggiunta in coda, ✏️ per correggere artista/titolo/lingua e rigenerare il testo |
+| **Aggiungi brano** | Pulsante in alto nella libreria: cerca su YouTube e *Aggiungi alla libreria*, l'elaborazione parte in background |
 | **Playlist** | Coda dei cantanti: riordina, avvia, rimuovi |
 | **Player** | `Spazio` play/pausa · `←/→` ±5 s · `V` voce guida on/off · `F` schermo intero · `Esc` chiudi. Il pulsante ⏱ corregge l'anticipo/ritardo del testo (memorizzato per brano) |
-| **Telefono** | Nome → *Brani* (prenota) · *YouTube* (scarica e prenota) · *Playlist* (coda, riordino, pausa e voce guida a distanza) |
+| **Telefono** | Nome → *Brani* (prenota; *Aggiungi brano* per cercare su YouTube, scaricare e prenotare) · *Playlist* (coda, si tolgono le proprie prenotazioni). Gli amministratori (interruttore **ADMIN**) in più: pausa, stop, brano successivo, volume generale e della voce, riordino ed eliminazione di qualsiasi brano in coda, QR code d'ingresso per 10 s nell'angolo della TV |
 
 Negli ultimi 30 secondi di un brano compare l'annuncio **«Sta per iniziare…»** con conto alla rovescia, e allo zero parte il cantante successivo.
 
@@ -71,6 +77,7 @@ Negli ultimi 30 secondi di un brano compare l'annuncio **«Sta per iniziare…»
 | `SINGITNOW_DATA` | `./data` | libreria, modelli, log |
 | `SINGITNOW_SEPARATION_MODEL` | `UVR-MDX-NET-Inst_HQ_3.onnx` | es. `model_bs_roformer_ep_317_sdr_12.9755.ckpt` (qualità più alta, molto più lento su CPU) |
 | `SINGITNOW_WHISPER_MODEL` | `small` | `base` più veloce, `medium` più preciso |
+| `SINGITNOW_ADMIN_PASSWORD` | *(predefinita)* | password per l'interruttore **ADMIN** del telefono; nel codice c'è solo la sua impronta SHA-256 |
 
 ## Sviluppo
 

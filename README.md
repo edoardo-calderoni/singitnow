@@ -65,9 +65,14 @@ Il player riproduce base e voce con la Web Audio API, sincronizzate al campione,
 | **Aggiungi brano** | Pulsante in alto nella libreria: cerca su YouTube e *Aggiungi alla libreria*, l'elaborazione parte in background |
 | **Playlist** | Coda dei cantanti: riordina, avvia, rimuovi |
 | **Player** | `Spazio` play/pausa · `←/→` ±5 s · `V` voce guida on/off · `F` schermo intero · `Esc` chiudi. Il pulsante ⏱ corregge l'anticipo/ritardo del testo (memorizzato per brano) |
-| **Telefono** | Nome → *Brani* (prenota; *Aggiungi brano* per cercare su YouTube, scaricare e prenotare) · *Playlist* (coda, si tolgono le proprie prenotazioni). Gli amministratori (interruttore **ADMIN**) in più: pausa, stop, brano successivo, volume generale e della voce, riordino ed eliminazione di qualsiasi brano in coda, QR code d'ingresso per 10 s nell'angolo della TV |
+| **Telefono** | Nome → *Brani* (prenota; *Aggiungi brano* per cercare su YouTube, scaricare e prenotare) · *Playlist* (coda, si tolgono le proprie prenotazioni). Un solo brano in coda per persona: «Prima esibisciti e poi aggiungi un altro brano». Gli amministratori (interruttore **ADMIN**) in più: brani in coda senza limiti, pausa, stop, brano successivo, volume generale e della voce, riordino ed eliminazione di qualsiasi brano in coda, QR code d'ingresso per 10 s nell'angolo della TV |
 
 Negli ultimi 30 secondi di un brano compare l'annuncio **«Sta per iniziare…»** con conto alla rovescia, e allo zero parte il cantante successivo.
+
+**Modalità della serata** (si sceglie nella barra laterale dell'app sul PC o nei controlli del player, oppure da un amministratore dal telefono, scheda *Playlist*; si può cambiare anche a brano in corso: tornando in Karaoke la voce guida riparte da 0):
+
+- **Karaoke**: si canta a turno, un brano in coda per persona, voce guida regolabile, applausi e avviso «Fra poco tocca a te».
+- **Jukebox**: si ascolta il videoclip con la voce originale e senza testo in sovraimpressione, ognuno aggiunge quanti brani vuole (e può togliere i propri); al posto di «canta» compare «Brano aggiunto da…», niente applausi né avviso del turno, l'amministratore regola solo il volume generale.
 
 ## Configurazione (variabili d'ambiente)
 

@@ -976,3 +976,67 @@ body {
 .back-btn {
   margin-bottom: 10px;
 }
+
+/* ---------- modalità Jukebox */
+.mode-pill {
+  align-self: flex-start;
+  margin: -6px 0 14px 4px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: white;
+  background: var(--grad);
+}
+
+/* ---------- scelta Karaoke / Jukebox nella barra laterale */
+.mode-switch {
+  margin: -4px 0 16px;
+}
+.mode-switch-label {
+  margin: 0 0 6px 4px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted, rgba(255, 255, 255, 0.6));
+}
+.mode-seg {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.06);
+}
+.mode-seg button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 38px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+.mode-seg button:hover:not(.on) {
+  background: rgba(255, 255, 255, 0.06);
+}
+.mode-seg button.on {
+  background: var(--grad);
+  color: white;
+}
+.mode-seg.compact {
+  width: 230px;
+}
+.mode-seg.compact button {
+  height: 34px;
+  font-size: 13px;
+}

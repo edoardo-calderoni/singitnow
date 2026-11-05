@@ -894,3 +894,62 @@ body {
 .m-subhead .m-h2 {
   margin: 0;
 }
+
+/* ---------- modalità Karaoke / Jukebox */
+.m-mode-pill {
+  margin-left: 6px;
+  padding: 2px 7px;
+  border-radius: 6px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  color: white;
+  background: var(--grad);
+  align-self: center;
+}
+.m-mode {
+  margin-bottom: 14px;
+  padding: 12px;
+  border-radius: 16px;
+  background: var(--card, rgba(255, 255, 255, 0.05));
+  border: 1px solid var(--border);
+}
+.m-mode-label {
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted, rgba(255, 255, 255, 0.6));
+  margin-bottom: 8px;
+}
+.m-seg {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px;
+  padding: 4px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.06);
+}
+.m-seg button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  height: 40px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+.m-seg button.on {
+  background: var(--grad);
+  color: white;
+}
+.m-mode-hint {
+  margin-top: 8px;
+  font-size: 13px;
+  color: var(--muted, rgba(255, 255, 255, 0.6));
+}

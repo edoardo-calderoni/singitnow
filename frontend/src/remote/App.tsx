@@ -26,6 +26,7 @@ import {
   Song,
 } from "../shared/api";
 import { LivePlayer, useLive } from "../shared/live";
+import { useJukebox } from "../shared/mode";
 import {
   Avatar,
   avatarKey,
@@ -48,6 +49,7 @@ import {
   useTick,
   AdminControls,
   useVolumeKeys,
+  ModeSwitch,
 } from "./Live";
 
 type Tab = "queue" | "lyrics" | "library" | "search";
@@ -70,6 +72,7 @@ export function App() {
     if (connected && getAdminToken()) adminCheck().then(setIsAdmin);
   }, [connected]);
   useVolumeKeys(isAdmin, player);
+  const jukebox = useJukebox();
   const serverPhoto = useAvatarUrl(name);
 
   // la foto c'è sul telefono ma non sul PC (es. cartella dati svuotata): la ricarica da sola
@@ -149,6 +152,7 @@ export function App() {
           <span>
             Sing<span className="grad-text">IT</span>now
           </span>
+          {jukebox && <span className="m-mode-pill">JUKEBOX</span>}
         </div>
         <button
           className="m-user"
@@ -215,13 +219,13 @@ export function App() {
           Brani
         </button>
       </nav>
-      <GetReadyAlert
+      {!jukebox && <GetReadyAlert
         name={name}
         playlist={playlist}
         player={player}
         synced={synced}
         onStage={() => setTab("lyrics")}
-      />
+      />}
       {profileOpen && (
         <ProfileSheet
           name={name}
@@ -444,11 +448,13 @@ function QueueTab({
 }) {
   useTick(1000); // aggiorna i tempi di attesa
   const now = playlist.now_playing;
+  const jukebox = useJukebox();
   const starts = entryStarts(playlist, player);
   return (
     <div className="m-section">
+      {isAdmin && <ModeSwitch />}
       <TurnBanner turn={turnFor(name, playlist, player)} onAdd={goLibrary} />
-      {turnFor(name, playlist, player) && <EnableVibration />}
+      {!jukebox && turnFor(name, playlist, player) && <EnableVibration />}
       {now?.song && (
         <div className={`m-now ${now.song.cover_url ? "has-cover" : ""}`}>
           <img
@@ -459,18 +465,22 @@ function QueueTab({
           <div className="m-now-shade" />
           <div className="m-now-body">
             <div className="eyebrow">
-              Sul palco{now.singer ? `: ${now.singer}` : ""}
+              {jukebox
+                ? now.singer
+                  ? `Brano aggiunto da ${now.singer}`
+                  : "In riproduzione"
+                : `Sul palco${now.singer ? `: ${now.singer}` : ""}`}
             </div>
             <div className="m-now-title">{now.song.title}</div>
             <div className="muted">{now.song.artist}</div>
             {/* pausa, stop, avanti, volumi e QR: solo per gli amministratori */}
             {isAdmin && <AdminControls name={name} player={player} />}
-            {now.singer !== name && <ApplauseButton name={name} />}
+            {now.singer !== name && !jukebox && <ApplauseButton name={name} />}
           </div>
         </div>
       )}
 
-      <h2 className="m-h2">Prossimi a cantare</h2>
+      <h2 className="m-h2">{jukebox ? "Prossimi brani" : "Prossimi a cantare"}</h2>
       {playlist.entries.length === 0 && playlist.waiting.length === 0 ? (
         <div className="empty">
           <h3>La coda è vuota</h3>
@@ -587,6 +597,7 @@ function LibraryTab({
   safe: Safe;
   goAdd: () => void;
 }) {
+  const jukebox = useJukebox();
   const [text, setText] = useState("");
   const [lang, setLang] = useState("");
   const ready = useMemo(
@@ -653,10 +664,10 @@ function LibraryTab({
               <button
                 className="btn btn-primary btn-sm"
                 onClick={() =>
-                  safe(() => api.enqueue(s.id, name), "Prenotato! 🎤")
+                  safe(() => api.enqueue(s.id, name), jukebox ? "Aggiunto alla coda! 🎵" : "Prenotato! 🎤")
                 }
               >
-                <Plus size={16} /> Canto
+                <Plus size={16} /> {jukebox ? "Aggiungi" : "Canto"}
               </button>
             </li>
           ))}
@@ -678,6 +689,7 @@ function SearchTab({
   safe: Safe;
   onBack: () => void;
 }) {
+  const jukebox = useJukebox();
   const [q, setQ] = useState("");
   const [results, setResults] = useState<SearchResult[] | null>(null);
   const [busy, setBusy] = useState(false);
@@ -741,10 +753,10 @@ function SearchTab({
                 <button
                   className="btn btn-ghost btn-sm"
                   onClick={() =>
-                    safe(() => api.enqueue(s.id, name), "Prenotato! 🎤")
+                    safe(() => api.enqueue(s.id, name), jukebox ? "Aggiunto alla coda! 🎵" : "Prenotato! 🎤")
                   }
                 >
-                  <Check size={16} /> Canto
+                  <Check size={16} /> {jukebox ? "Aggiungi" : "Canto"}
                 </button>
               ) : (
                 <button
@@ -756,7 +768,7 @@ function SearchTab({
                     )
                   }
                 >
-                  <Plus size={16} /> Canto
+                  <Plus size={16} /> {jukebox ? "Aggiungi" : "Canto"}
                 </button>
               )}
             </li>

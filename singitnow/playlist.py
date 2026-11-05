@@ -78,6 +78,16 @@ class Playlist:
             }
 
     # -------------------------------------------------------------- modifica
+    def has_pending(self, singer: str) -> bool:
+        """True se `singer` ha già un brano in coda (pronto o ancora in preparazione)."""
+        k = singer.strip().casefold()
+        if not k:
+            return False
+        with self._lock:
+            return any(e.singer.strip().casefold() == k for e in self._entries) or any(
+                n.strip().casefold() == k for names in self._waiting.values() for n in names
+            )
+
     def add(self, song_id: str, singer: str) -> None:
         singer = singer.strip()[:40] or "Ospite"
         with self._lock:

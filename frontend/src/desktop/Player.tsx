@@ -15,6 +15,8 @@ import { api, Entry, fmtTime, LyricLine } from "../shared/api";
 import { KaraokeEngine } from "../shared/engine";
 import { LyricsView } from "./LyricsView";
 import { Avatar } from "../shared/Avatar";
+import { useJukebox } from "../shared/mode";
+import { ModeSeg } from "./ModeSeg";
 
 const UPCOMING_WINDOW = 30; // secondi prima della fine in cui annunciare il prossimo brano
 const BACK_TO_HOME = 8; // a fine playlist: secondi di applausi prima di tornare alla schermata principale
@@ -69,6 +71,16 @@ export function Player({ entry, next, onClose, onNext }: Props) {
   const [playing, setPlaying] = useState(false);
   const [ended, setEnded] = useState(false);
   const [vocals, setVocals] = useState(() => stored("sin.vocals", 0.15));
+  // Jukebox: si ascolta il brano originale, voce sempre al massimo (la voce guida non si regola)
+  const jukebox = useJukebox();
+  const jukeboxRef = useRef(jukebox);
+  jukeboxRef.current = jukebox;
+  // passaggio Jukebox -> Karaoke durante il brano: la voce guida riparte da 0 (si canta sulla base)
+  const wasJukebox = useRef(jukebox);
+  useEffect(() => {
+    if (wasJukebox.current && !jukebox) setVocals(0);
+    wasJukebox.current = jukebox;
+  }, [jukebox]);
   const [volume, setVolume] = useState(() => stored("sin.volume", 1));
   const [offset, setOffset] = useState(() => stored(`sin.offset.${song.id}`, 0));
   const [controls, setControls] = useState(true);
@@ -106,7 +118,7 @@ export function Player({ entry, next, onClose, onNext }: Props) {
         if (cancelled) return;
         setDuration(engine.duration);
         setLoading(1);
-        engine.setVocalVolume(vocals);
+        engine.setVocalVolume(jukeboxRef.current ? 1 : vocals);
         engine.setMasterVolume(volume);
         // ?seek=120 nell'URL: parte da quel secondo (utile per test e prove)
         const startAt = parseFloat(new URLSearchParams(location.search).get("seek") ?? "");
@@ -129,9 +141,9 @@ export function Player({ entry, next, onClose, onNext }: Props) {
   }, [song.id]);
 
   useEffect(() => {
-    engineRef.current?.setVocalVolume(vocals);
+    engineRef.current?.setVocalVolume(jukebox ? 1 : vocals);
     localStorage.setItem("sin.vocals", String(vocals));
-  }, [vocals]);
+  }, [vocals, jukebox]);
   useEffect(() => {
     engineRef.current?.setMasterVolume(volume);
     localStorage.setItem("sin.volume", String(volume));
@@ -152,7 +164,7 @@ export function Player({ entry, next, onClose, onNext }: Props) {
     const e = engineRef.current;
     if (!e || !e.duration) return;
     api
-      .playerState({ song_id: song.id, t: e.currentTime, duration: e.duration, playing: e.playing, offset: offsetRef.current, vocals: vocalsRef.current, volume: volumeRef.current })
+      .playerState({ song_id: song.id, t: e.currentTime, duration: e.duration, playing: e.playing, offset: offsetRef.current, vocals: jukeboxRef.current ? 1 : vocalsRef.current, volume: volumeRef.current })
       .catch(() => {});
   }, [song.id]);
   useEffect(() => {
@@ -160,7 +172,7 @@ export function Player({ entry, next, onClose, onNext }: Props) {
     report();
     const id = window.setInterval(report, 1000);
     return () => window.clearInterval(id);
-  }, [loading, playing, offset, vocals, volume, report]);
+  }, [loading, playing, offset, vocals, volume, jukebox, report]);
 
   // Brano finito con la coda vuota: qualche secondo di applausi, poi si torna alla schermata
   // principale. Se nel frattempo arriva una prenotazione, si riparte direttamente con quella.
@@ -233,7 +245,7 @@ export function Player({ entry, next, onClose, onNext }: Props) {
           break;
         case "v":
         case "V":
-          setVocals((v) => (v > 0 ? 0 : 0.6));
+          if (!jukeboxRef.current) setVocals((v) => (v > 0 ? 0 : 0.6));
           break;
         case "f":
         case "F":
@@ -254,7 +266,7 @@ export function Player({ entry, next, onClose, onNext }: Props) {
       if (action === "resume") e.play();
       if (action === "toggle") e.toggle();
       if (action === "restart") restart();
-      if (action === "vocals" && typeof value === "number") setVocals(Math.max(0, Math.min(1, value)));
+      if (action === "vocals" && typeof value === "number" && !jukeboxRef.current) setVocals(Math.max(0, Math.min(1, value)));
       if (action === "volume" && typeof value === "number") setVolume(Math.max(0, Math.min(1, value)));
       setTimeout(() => setPlaying(e.playing), 120);
       wake();
@@ -281,7 +293,9 @@ export function Player({ entry, next, onClose, onNext }: Props) {
         <div className="now-singer">
           <Avatar name={entry.singer} className="big" />
           <div>
-            <div className="eyebrow">{entry.singer ? `Ora canta ${entry.singer}` : "Karaoke"}</div>
+            <div className="eyebrow">
+              {entry.singer ? (jukebox ? `Brano aggiunto da ${entry.singer}` : `Ora canta ${entry.singer}`) : jukebox ? "Jukebox" : "Karaoke"}
+            </div>
             <div className="player-title">
               {song.title} <span className="muted">· {song.artist}</span>
             </div>
@@ -306,7 +320,7 @@ export function Player({ entry, next, onClose, onNext }: Props) {
               {next!.singer && (
                 <>
                   {" "}
-                  · canta <Avatar name={next!.singer} className="xs inline" /> <b>{next!.singer}</b>
+                  · {jukebox ? "aggiunto da" : "canta"} <Avatar name={next!.singer} className="xs inline" /> <b>{next!.singer}</b>
                 </>
               )}
             </div>
@@ -319,13 +333,14 @@ export function Player({ entry, next, onClose, onNext }: Props) {
       )}
 
       {/* testo */}
-      {loading >= 1 && !error && <LyricsView lines={lines} t={lyricT} />}
+      {/* in Jukebox niente testo in sovraimpressione: si guarda il videoclip */}
+      {loading >= 1 && !error && !jukebox && <LyricsView lines={lines} t={lyricT} />}
 
       {/* caricamento / errori / fine */}
       {loading < 1 && !error && (
         <div className="player-center">
           <div className="loader-ring" />
-          <div className="loader-text">Preparo il palco… {Math.round(loading * 100)}%</div>
+          <div className="loader-text">{jukebox ? "Preparo il brano…" : "Preparo il palco…"} {Math.round(loading * 100)}%</div>
         </div>
       )}
       {error && (
@@ -339,11 +354,13 @@ export function Player({ entry, next, onClose, onNext }: Props) {
       )}
       {ended && (
         <div className="player-center finale">
-          <div className="finale-emoji">👏</div>
-          <h2 className="grad-text">Applausi{entry.singer ? ` per ${entry.singer}` : ""}!</h2>
+          <div className="finale-emoji">{jukebox ? "🎵" : "👏"}</div>
+          <h2 className="grad-text">
+            {jukebox ? "Coda finita" : `Applausi${entry.singer ? ` per ${entry.singer}` : ""}!`}
+          </h2>
           <div className="row">
             <button className="btn btn-ghost" onClick={restart}>
-              <RotateCcw size={16} /> Ricanta
+              <RotateCcw size={16} /> {jukebox ? "Riascolta" : "Ricanta"}
             </button>
             <button className="btn btn-primary" onClick={onClose}>
               Torna alla libreria
@@ -382,6 +399,7 @@ export function Player({ entry, next, onClose, onNext }: Props) {
           </div>
 
           <div className="controls-group mixers">
+            {!jukebox && (
             <label className="mixer" title="Voce originale (V)">
               <button className="icon-btn" onClick={() => setVocals((v) => (v > 0 ? 0 : 0.6))}>
                 {vocals > 0 ? <Mic size={18} /> : <MicOff size={18} />}
@@ -398,6 +416,7 @@ export function Player({ entry, next, onClose, onNext }: Props) {
               />
               <span className="mixer-val">{Math.round(vocals * 100)}%</span>
             </label>
+            )}
             <label className="mixer" title="Volume generale (musica e voce)">
               <Volume2 size={18} className="muted" />
               <span className="mixer-label">Volume</span>
@@ -414,6 +433,8 @@ export function Player({ entry, next, onClose, onNext }: Props) {
           </div>
 
           <div className="controls-group">
+            <ModeSeg compact />
+            {!jukebox && (
             <div className="offset" title="Anticipa o ritarda il testo rispetto alla musica">
               <Timer size={16} className="muted" />
               <button className="icon-btn" onClick={() => setOffset((o) => +(o - 0.1).toFixed(2))}>
@@ -424,6 +445,7 @@ export function Player({ entry, next, onClose, onNext }: Props) {
                 +
               </button>
             </div>
+            )}
             <button className="icon-btn" title="Schermo intero (F)" onClick={toggleFullscreen}>
               <Maximize size={18} />
             </button>

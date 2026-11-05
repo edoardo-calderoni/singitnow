@@ -14,7 +14,7 @@ from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import __version__, admin, avatars, config, youtube
+from . import __version__, admin, avatars, config, mode, youtube
 from .events import hub
 from .library import READY, library
 from .pipeline import pipeline
@@ -189,8 +189,19 @@ async def search(q: str):
     return results
 
 
+ONE_AT_A_TIME = "Prima esibisciti e poi aggiungi un altro brano"
+
+
+def _check_one_at_a_time(request: Request, singer: str, token: str | None) -> None:
+    """Karaoke: gli utenti normali hanno un solo brano in coda alla volta (admin e TV senza limiti).
+    In modalità Jukebox nessun limite."""
+    if singer.strip() and not mode.is_jukebox() and not admin.can_control(request, token) and playlist.has_pending(singer):
+        raise HTTPException(409, ONE_AT_A_TIME)
+
+
 @app.post("/api/download")
-def download(req: DownloadReq):
+def download(req: DownloadReq, request: Request, x_admin_token: str | None = Header(default=None)):
+    _check_one_at_a_time(request, req.singer, x_admin_token)
     song = pipeline.enqueue(req.youtube_id, req.title, req.channel, req.duration)
     if req.singer.strip():
         playlist.add(song.id, req.singer)
@@ -204,9 +215,10 @@ def get_playlist():
 
 
 @app.post("/api/playlist")
-def queue_song(req: QueueReq):
+def queue_song(req: QueueReq, request: Request, x_admin_token: str | None = Header(default=None)):
     if not library.get(req.song_id):
         raise HTTPException(404, "Brano non in libreria")
+    _check_one_at_a_time(request, req.singer, x_admin_token)
     playlist.add(req.song_id, req.singer)
     return playlist.snapshot()
 
@@ -279,6 +291,8 @@ def command(req: CommandReq):
     """Comandi dagli amministratori verso il player (pausa, ripresa, volume voce)."""
     if req.action not in {"pause", "resume", "toggle", "vocals", "volume", "restart"}:
         raise HTTPException(400, "Comando sconosciuto")
+    if req.action == "vocals" and mode.is_jukebox():
+        raise HTTPException(409, "In modalità Jukebox la voce originale resta al massimo")
     hub.publish("player_command", req.model_dump())
     return {"ok": True}
 
@@ -304,6 +318,23 @@ def admin_show_qr():
     return {"ok": True}
 
 
+class ModeReq(BaseModel):
+    mode: str
+
+
+@app.get("/api/mode")
+def get_mode():
+    return mode.public()
+
+
+@app.post("/api/admin/mode", dependencies=[Depends(admin.require_control)])
+def set_mode(req: ModeReq):
+    """Karaoke o Jukebox: la sceglie un amministratore dal telefono oppure la TV (il PC stesso)."""
+    if req.mode not in mode.MODES:
+        raise HTTPException(400, "Modalità sconosciuta")
+    return mode.set_mode(req.mode)
+
+
 @app.post("/api/admin/logout")
 def admin_logout(x_admin_token: str | None = Header(default=None)):
     admin.logout(x_admin_token)
@@ -322,7 +353,7 @@ def applause(req: ApplauseReq):
     import time
 
     name = req.name.strip()[:40]
-    if not name or not playlist.now_playing:
+    if not name or not playlist.now_playing or mode.is_jukebox():
         return {"ok": False}
     now = time.monotonic()
     recent = [t for t in _applause_log.get(name, []) if now - t < APPLAUSE_WINDOW]
@@ -372,6 +403,7 @@ async def ws(websocket: WebSocket):
         await websocket.send_text(json.dumps({"event": "playlist", "data": playlist.snapshot()}))
         await websocket.send_text(json.dumps({"event": "player_state", "data": player_state}))
         await websocket.send_text(json.dumps({"event": "avatars", "data": avatars.public_map()}))
+        await websocket.send_text(json.dumps({"event": "mode", "data": mode.public()}))
         while True:
             await websocket.receive_text()  # keep-alive dal client
     except WebSocketDisconnect:

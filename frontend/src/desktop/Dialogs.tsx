@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { api, LANGUAGES, Song } from "../shared/api";
+import { useJukebox } from "../shared/mode";
 
 export function SingerDialog({
   song,
@@ -13,6 +14,7 @@ export function SingerDialog({
   onConfirm: (singer: string) => void;
 }) {
   const [name, setName] = useState("");
+  const jukebox = useJukebox();
   return (
     <div className="modal-back" onClick={onCancel}>
       <form
@@ -23,12 +25,12 @@ export function SingerDialog({
           onConfirm(name.trim());
         }}
       >
-        <h3>Chi canta?</h3>
+        <h3>{jukebox ? "Chi aggiunge il brano?" : "Chi canta?"}</h3>
         <p className="muted" style={{ margin: 0 }}>
           {song.title} · {song.artist}
         </p>
         <div className="field">
-          <input autoFocus placeholder="Nome del cantante" value={name} onChange={(e) => setName(e.target.value)} maxLength={40} />
+          <input autoFocus placeholder={jukebox ? "Nome" : "Nome del cantante"} value={name} onChange={(e) => setName(e.target.value)} maxLength={40} />
         </div>
         {recent.length > 0 && (
           <div className="chips">

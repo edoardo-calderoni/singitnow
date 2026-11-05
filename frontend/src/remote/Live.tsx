@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Clock, Mic, Mic2, MicOff, Pause, Play, Plus, QrCode, SkipForward, Sparkles, Square, Volume2, VolumeX } from "lucide-react";
+import { Clock, Mic, Mic2, MicOff, Music, Pause, Play, Plus, QrCode, SkipForward, Sparkles, Square, Volume2, VolumeX } from "lucide-react";
 import { api, LyricLine, PlaylistState } from "../shared/api";
 import { LivePlayer, playerTime } from "../shared/live";
+import { Mode, useJukebox, useMode } from "../shared/mode";
 import { activeIndex, switchTimes, wordFill } from "../shared/lyrics";
 
 /** Pausa stimata tra un brano e il successivo (caricamento audio sulla TV). */
@@ -80,10 +81,29 @@ export function fmtWait(s: number): string {
 }
 
 export function TurnBanner({ turn, onAdd }: { turn: Turn | null; onAdd: () => void }) {
+  const jukebox = useJukebox();
   if (!turn) return null;
   let title: React.ReactNode;
   let sub: string;
-  if (turn.kind === "stage") {
+  if (jukebox) {
+    // Jukebox: nessun turno da cantare, solo quando parte il proprio brano
+    if (turn.kind === "stage") {
+      title = "Sta suonando il tuo brano 🎵";
+      sub = "Segui il testo nella scheda Testo";
+    } else if (turn.kind === "next") {
+      title = "Il tuo brano è il prossimo!";
+      sub = "Parte appena finisce quello in corso";
+    } else {
+      title = (
+        <>
+          Il tuo brano partirà fra <span className="grad-text">{fmtWait(turn.seconds)}</span>
+        </>
+      );
+      sub =
+        (turn.ahead === 1 ? "1 brano prima del tuo" : `${turn.ahead} brani prima del tuo`) +
+        (turn.kind === "preparing" ? " · il tuo brano è in preparazione" : "");
+    }
+  } else if (turn.kind === "stage") {
     title = "È il tuo turno: sei sul palco! 🎤";
     sub = "Guarda il testo nella scheda Testo";
   } else if (turn.kind === "next") {
@@ -126,6 +146,7 @@ export function LyricsTab({
   player: LivePlayer;
 }) {
   const now = playlist.now_playing;
+  const jukebox = useJukebox();
   const songId = now?.song?.status === "ready" ? now.song.id : null;
   const [lines, setLines] = useState<LyricLine[] | null>(null);
   const [t, setT] = useState(0);
@@ -208,14 +229,14 @@ export function LyricsTab({
             {now.singer && (
               <>
                 {" "}
-                · canta <b>{now.singer}</b>
+                · {jukebox ? "aggiunto da" : "canta"} <b>{now.singer}</b>
               </>
             )}
           </div>
         </div>
       </div>
       {isAdmin && <AdminControls name={name} player={player} compact />}
-      {now.singer !== name && <ApplauseButton name={name} floating />}
+      {now.singer !== name && !jukebox && <ApplauseButton name={name} floating />}
       {lines === null ? (
         <div className="empty">
           <p>Carico il testo…</p>
@@ -537,6 +558,7 @@ export function AdminControls({ name, player, compact }: { name: string; player:
       .then(() => ok && setMsg(ok))
       .catch((e) => setMsg(e.message));
   const paused = player?.state.playing === false;
+  const jukebox = useJukebox();
   return (
     <div className={`m-admin-ctrl ${compact ? "compact" : ""}`}>
       <div className="m-admin-btns">
@@ -558,7 +580,8 @@ export function AdminControls({ name, player, compact }: { name: string; player:
         </button>
       </div>
       <VocalSlider name={name} player={player} compact={compact} kind="volume" />
-      <VocalSlider name={name} player={player} compact={compact} />
+      {/* Jukebox: solo il volume generale, la voce resta quella originale */}
+      {!jukebox && <VocalSlider name={name} player={player} compact={compact} />}
       {msg && <div className="m-admin-msg">{msg}</div>}
     </div>
   );
@@ -617,4 +640,37 @@ export function useVolumeKeys(isAdmin: boolean, player: LivePlayer) {
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [active]);
+}
+
+// ------------------------------------------------------------------ modalità (solo amministratori)
+/** Scelta Karaoke / Jukebox: vale per tutti, sulla TV e su ogni telefono. */
+export function ModeSwitch() {
+  const mode = useMode();
+  const [error, setError] = useState("");
+  const pick = (m: Mode) => {
+    if (m === mode) return;
+    api
+      .setMode(m)
+      .then(() => setError(""))
+      .catch((e) => setError(e.message));
+  };
+  return (
+    <div className="m-mode">
+      <div className="m-mode-label">Modalità della serata</div>
+      <div className="m-seg" role="radiogroup" aria-label="Modalità">
+        <button type="button" role="radio" aria-checked={mode === "karaoke"} className={mode === "karaoke" ? "on" : ""} onClick={() => pick("karaoke")}>
+          <Mic2 size={16} /> Karaoke
+        </button>
+        <button type="button" role="radio" aria-checked={mode === "jukebox"} className={mode === "jukebox" ? "on" : ""} onClick={() => pick("jukebox")}>
+          <Music size={16} /> Jukebox
+        </button>
+      </div>
+      <div className="m-mode-hint">
+        {mode === "jukebox"
+          ? "Voce originale, ognuno aggiunge quanti brani vuole"
+          : "Si canta a turno, un brano in coda per persona"}
+      </div>
+      {error && <div className="m-admin-err">{error}</div>}
+    </div>
+  );
 }

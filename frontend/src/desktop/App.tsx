@@ -7,6 +7,8 @@ import { EditDialog, SingerDialog } from "./Dialogs";
 import { Player, setFullscreen } from "./Player";
 import { RequestEvent, RequestToasts, useRequests } from "./Requests";
 import { ApplauseLayer, useApplause } from "./Applause";
+import { useJukebox } from "../shared/mode";
+import { ModeSeg } from "./ModeSeg";
 import { LibraryView, SearchView } from "./Views";
 
 type Tab = "library" | "search";
@@ -26,6 +28,7 @@ export function App() {
   const [queueFor, setQueueFor] = useState<Song | null>(null);
   const [editing, setEditing] = useState<Song | null>(null);
   // QR code d'ingresso mostrato per qualche secondo nell'angolo (richiesto da un amministratore)
+  const jukebox = useJukebox();
   const [qrShown, setQrShown] = useState(false);
   const qrTimer = useRef<number | undefined>(undefined);
   function showQr(seconds: number) {
@@ -75,6 +78,10 @@ export function App() {
           <span>
             Sing<span className="grad-text">IT</span>now
           </span>
+        </div>
+        <div className="mode-switch">
+          <div className="mode-switch-label">Modalità</div>
+          <ModeSeg onError={setToast} />
         </div>
         <button className="nav-item active" onClick={() => setTab("library")}>
           <Library size={22} /> Libreria
@@ -225,7 +232,7 @@ export function App() {
           <div className="qr-corner-text">Entra anche tu!</div>
         </div>
       )}
-      {nowSong && <ApplauseLayer bubbles={applause.bubbles} />}
+      {nowSong && !jukebox && <ApplauseLayer bubbles={applause.bubbles} />}
       {toast && <div className="toast">{toast}</div>}
     </div>
   );

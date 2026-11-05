@@ -138,6 +138,7 @@ export const api = {
   stop: () => req<PlaylistState>("POST", "/api/player/stop"),
   next: () => req<PlaylistState>("POST", "/api/player/next"),
   showQr: () => req("POST", "/api/admin/qr"),
+  setMode: (mode: "karaoke" | "jukebox") => req<{ mode: string }>("POST", "/api/admin/mode", { mode }),
   command: (action: string, value?: number, singer = "") => req("POST", "/api/player/command", { action, value, singer }),
   playerState: (state: PlayerState) => req("POST", "/api/player/state", state),
 };

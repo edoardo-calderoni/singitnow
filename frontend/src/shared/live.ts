@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { api, PlayerState, PlaylistState, Song } from "./api";
 import { setAvatars } from "./Avatar";
+import { setMode } from "./mode";
 
 type Listener = (event: string, data: any) => void;
 
@@ -52,6 +53,8 @@ export function useLive(onEvent?: Listener) {
         } else if (event === "playlist") {
           setPlaylist(data);
           setSynced(true);
+        } else if (event === "mode") {
+          setMode(data?.mode === "jukebox" ? "jukebox" : "karaoke");
         } else if (event === "avatars") {
           setAvatars(data);
         } else if (event === "player_state") {

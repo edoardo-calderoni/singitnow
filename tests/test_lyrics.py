@@ -233,3 +233,21 @@ def test_nota_finale_allungata_in_passato_si_accorcia():
     sung = [Word("un", 0.5, 1.0), Word("mato", 1.05, 2.9)]
     extend_to_voice([line], (db, -40.0), sung)
     assert line.words[-1].end == pytest.approx(3.6, abs=0.05)
+
+
+def test_riga_spostata_da_lrclib_dopo_una_pausa():
+    """«Stella»: LRCLIB mette la riga subito dopo il ritornello e poi lascia 35 s vuoti, mentre nel
+    video la pausa strumentale viene prima e la riga si canta ~28 s più tardi."""
+    texts = [
+        (10.0, "stella stella mia resta ancora nel mio cuore"),
+        (18.0, "proteggi i nostri figli puri nella vita quotidiana"),
+        (53.0, "e salvali dall odio e dal potere"),
+        (60.0, "come il primo giorno come nella fantasia"),
+    ]
+    lines = [Line([Word(w) for w in t.split()], lrc_time=lt) for lt, t in texts]
+    heard = []
+    for start, (_, t) in zip((10.0, 46.0, 53.0, 60.0), texts):  # la seconda riga si canta a 46 s
+        heard += sung(*[(w, start + 0.4 * k) for k, w in enumerate(t.split())])
+    align(lines, heard, duration=80.0)
+    assert lines[1].words[0].start == pytest.approx(46.0)
+    assert [l.words[0].start for l in (lines[0], lines[2], lines[3])] == pytest.approx([10.0, 53.0, 60.0])

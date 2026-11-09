@@ -436,6 +436,58 @@ def _match_in_window(line: Line, lo: float, hi: float, sung: list[Word], times: 
             w.run = len(run)
 
 
+def _rematch_in_gaps(
+    lines: list[Line], idx: list[int], off: list[float], spans: list[float], sung: list[Word], times: list[float]
+) -> dict[int, float]:
+    """Righe che non trovano le loro parole vicino al tempo di LRCLIB: le si cerca in tutto lo spazio
+    fra la riga prima e quella dopo.
+
+    A volte i tempi di LRCLIB sono sbagliati attorno a una pausa strumentale: in «Stella» (Venditti)
+    «Proteggi i nostri figli puri…» è subito dopo il ritornello e poi ci sono 35 s vuoti, mentre nel
+    video la pausa viene prima e la riga si canta 28 s più tardi. Restituisce {riga: nuovo inizio}
+    per le righe spostate (abbinate di nuovo in sequenza, con almeno metà delle parole).
+
+    Una riga ritrovata può scavalcare al massimo un'altra riga rispetto all'ordine di LRCLIB: nei
+    ritornelli ripetuti («Shallow») le stesse parole si sentono anche molto prima, e spostarla là
+    schiaccerebbe tutte le righe in mezzo.
+    """
+    def matched(l: Line) -> int:
+        return sum(1 for w in l.words if w.start >= 0 and w.run >= 2)
+
+    moved: dict[int, float] = {}
+    for pos, i in enumerate(idx):
+        l = lines[i]
+        n = len(l.words)
+        if n < 3 or matched(l) * 2 >= n:
+            continue
+        guess = l.lrc_time + off[i]
+        prev = [w.end for j in idx[:pos] for w in lines[j].words if w.start >= 0]
+        nxt = [w.start for j in idx[pos + 1 :] for w in lines[j].words if w.start >= 0]
+        lo = max(prev) if prev else 0.0
+        hi = min(nxt) if nxt else (times[-1] + 1.0 if times else 0.0)
+        if hi - lo <= spans[i] + 3.0:
+            continue  # lo spazio è quello già guardato
+        saved = [(w.start, w.end, w.onset, w.run) for w in l.words]
+        for w in l.words:
+            w.start = w.end = -1.0
+            w.run = 0
+        _match_in_window(l, lo, hi, sung, times)
+        new = None
+        if matched(l) * 2 >= n:
+            k, first = next((k, w) for k, w in enumerate(l.words) if w.start >= 0 and w.run >= 2)
+            new = first.start - 0.3 * k
+            a, b = sorted((new, guess))
+            if sum(1 for j in idx if j != i and a < lines[j].lrc_time + off[j] < b) > 1:
+                new = None  # scavalcherebbe più righe: sono le parole di un'altra ripetizione
+        if new is not None:
+            moved[i] = new
+            log.info("Riga «%s» ritrovata a %.1f s (LRCLIB la metteva a %.1f s)", l.text, moved[i], guess)
+        else:
+            for w, (a, b, o, r) in zip(l.words, saved):
+                w.start, w.end, w.onset, w.run = a, b, o, r
+    return moved
+
+
 def _anchor_to_lrc(lines: list[Line], sung: list[Word], duration: float = 0.0) -> tuple[list[Line], float]:
     """Mette il testo di LRCLIB a tempo con il video usando i tempi per riga come punti fermi.
 
@@ -477,6 +529,10 @@ def _anchor_to_lrc(lines: list[Line], sung: list[Word], duration: float = 0.0) -
         l = lines[i]
         guess = l.lrc_time + off[i]
         _match_in_window(l, guess - 2.0, guess + spans[i] + 1.0, sung, times)
+    moved = _rematch_in_gaps(lines, idx, off, spans, sung, times)
+    for i in idx:
+        l = lines[i]
+        guess = l.lrc_time + off[i]
         first = next(((k, w) for k, w in enumerate(l.words[:4]) if w.start >= 0 and w.run >= 2), None)
         if first and abs(first[1].start - 0.3 * first[0] - guess) <= 2.0:
             raw[i] = (first[1].start - 0.3 * first[0] - l.lrc_time, first[0] == 0 and first[1].onset)
@@ -488,6 +544,26 @@ def _anchor_to_lrc(lines: list[Line], sung: list[Word], duration: float = 0.0) -
         clean = [d for d, onset in near if onset]
         pool = clean if len(clean) >= 3 else [d for d, _ in near]
         starts.append(lines[i].lrc_time + (statistics.median(pool) if len(pool) >= 3 else off[i]))
+        if i in moved:
+            starts[-1] = moved[i]  # riga ritrovata fuori dal suo tratto: parte dove la si canta
+    # righe senza nessuna parola sentita che resterebbero dopo una riga ritrovata più indietro
+    # («So' distrutto» prima di «Cameriè», ritrovata 3 s prima): si mettono nello spazio prima di lei
+    for q, i in enumerate(idx):
+        if i not in moved:
+            continue
+        p = q
+        while (
+            p > 0
+            and idx[p - 1] not in moved
+            and not any(w.start >= 0 for w in lines[idx[p - 1]].words)
+            and starts[p - 1] >= starts[q] - 0.3
+        ):
+            p -= 1
+        k = q - p
+        if k:
+            lo = starts[p - 1] if p > 0 else max(0.0, starts[q] - 2.0 * k)
+            for j in range(k):
+                starts[p + j] = lo + (j + 1) * (starts[q] - lo) / (k + 1)
     # taglio nel video: le righe del tratto precedente che si sovrappongono al successivo non si cantano
     pos = {i: k for k, i in enumerate(idx)}
     drop: set[int] = set()
@@ -503,7 +579,7 @@ def _anchor_to_lrc(lines: list[Line], sung: list[Word], duration: float = 0.0) -
         if i in drop:
             continue
         if out_starts and s < out_starts[-1] + 0.3:
-            if not confirmed[i]:
+            if not confirmed[i] and i not in moved:
                 continue  # riga non sentita che tornerebbe indietro: la si toglie
             s = out_starts[-1] + 0.3
         out_lines.append(lines[i])

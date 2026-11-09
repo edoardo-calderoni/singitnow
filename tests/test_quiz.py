@@ -54,6 +54,11 @@ def test_senza_nessuno_collegato_o_spento_non_parte(songs):
     mode.set_quiz(False)
     assert not quiz.start("e1")
     mode.set_quiz(True)
+    competition.set_enabled(False)  # con la Competizione spenta niente quiz
+    try:
+        assert not quiz.start("e1")
+    finally:
+        competition.set_enabled(True)
     mode.set_mode(mode.JUKEBOX)
     try:
         assert not quiz.start("e1")
@@ -88,7 +93,7 @@ def test_risposta_esatta_chiude_la_domanda_e_da_i_punti(songs):
     p = quiz.public()
     assert p["phase"] == "reveal" and p["winner"] == "Anna" and p["correct"] == right
     assert {a["name"] for a in p["answers"]} == {"Anna", "Marco"}
-    assert quiz._tally["anna"]["points"] == 1
+    assert p["points"] == 2  # +2 sulla media della Competizione
 
 
 def test_punti_sulla_media_della_competizione_con_un_tetto():

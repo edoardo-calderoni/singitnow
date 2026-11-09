@@ -82,7 +82,7 @@ export function QuizScreen({ name }: { name: string }) {
               {iWon ? (
                 <>
                   <div className="m-quiz-big">🎉 Hai indovinato!</div>
-                  <div>{q.points ? `+${q.points} punti in classifica` : "+1 risposta esatta"}</div>
+                  <div>{q.points ? `+${q.points} punti in classifica` : "ha già il massimo dei punti del quiz"}</div>
                 </>
               ) : q.winner ? (
                 <>

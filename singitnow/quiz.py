@@ -1,5 +1,5 @@
-"""Quiz musicale: fra un brano e l'altro (in Karaoke, se acceso nei Settaggi) una domanda sui brani
-della libreria, a cui si risponde dal telefono.
+"""Quiz musicale: fra un brano e l'altro (in Karaoke con la Competizione accesa, se acceso nei
+Settaggi) una domanda sui brani della libreria, a cui si risponde dal telefono.
 
 1. intro (7 s): sulla TV la scritta del quiz con il conto alla rovescia;
 2. question: la TV fa sentire un pezzo di un brano della libreria (solo l'audio) e sui telefoni
@@ -10,8 +10,7 @@ della libreria, a cui si risponde dal telefono.
 4. ranking (7 s): la classifica, poi riparte la musica.
 
 Punti: chi indovina guadagna +2 sulla media della Competizione (al massimo +6 per sessione: il quiz
-aiuta ma non ribalta la classifica del canto) e una risposta esatta nella classifica del quiz della
-serata (quella che si vede se la Competizione è spenta).
+aiuta ma non ribalta la classifica del canto).
 """
 
 from __future__ import annotations
@@ -174,14 +173,9 @@ def _question(exclude: set[str]) -> dict | None:
 
 # ------------------------------------------------------------------ stato
 def _ranking() -> dict:
-    """Classifica da mostrare dopo la domanda: quella della Competizione, se c'è, altrimenti quella del quiz."""
-    if competition.enabled():
-        rows = competition.standings()
-        if rows:
-            return {"kind": "competition", "rows": [{"name": r["singer"], "value": r["average"], "quiz": r.get("quiz", 0)} for r in rows[:8]]}
-    with _lock:
-        rows = sorted(_tally.values(), key=lambda r: -r["points"])[:8]
-    return {"kind": "quiz", "rows": [{"name": r["name"], "value": r["points"]} for r in rows]}
+    """Classifica da mostrare dopo la domanda: quella della Competizione."""
+    rows = competition.standings()
+    return {"kind": "competition", "rows": [{"name": r["singer"], "value": r["average"], "quiz": r.get("quiz", 0)} for r in rows[:8]]}
 
 
 def public() -> dict:
@@ -255,9 +249,9 @@ def _advance(qid: str, phase: str) -> None:
 
 def start(after_entry: str, exclude: set[str] | None = None) -> bool:
     """Fra un brano (`after_entry`, appena finito) e il successivo. False se il quiz non si fa:
-    spento, non in Karaoke, nessuno collegato dal telefono o troppo pochi brani."""
+    spento, Competizione spenta, non in Karaoke, nessuno collegato dal telefono o troppo pochi brani."""
     global _state
-    if not mode.quiz() or mode.is_jukebox() or not people.public():
+    if not mode.quiz() or not competition.enabled() or mode.is_jukebox() or not people.public():
         return False
     with _lock:
         if _state:

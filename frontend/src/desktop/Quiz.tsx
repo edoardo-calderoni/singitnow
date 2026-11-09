@@ -160,7 +160,7 @@ function Question({ q }: { q: QuizState }) {
               <Avatar name={q.winner} className="quiz-winner-avatar" />
               <div>
                 <div className="quiz-winner-name">{q.winner} ha indovinato!</div>
-                <div className="quiz-winner-points">{q.points ? `+${q.points} punti in classifica` : "+1 risposta esatta"}</div>
+                <div className="quiz-winner-points">{q.points ? `+${q.points} punti in classifica` : "ha già il massimo dei punti del quiz"}</div>
               </div>
             </div>
           ) : (
@@ -188,7 +188,7 @@ function Ranking({ q }: { q: QuizState }) {
       <span className="quiz-badge">{QUIZ_TITLE}</span>
       <h2>{r?.kind === "competition" ? "Classifica della Competizione" : "Classifica del quiz"}</h2>
       {rows.length === 0 ? (
-        <p className="quiz-hint">Ancora nessun punto: al prossimo quiz!</p>
+        <p className="quiz-hint">La classifica comincia con il primo brano votato</p>
       ) : (
         <ol>
           {rows.map((row, i) => (

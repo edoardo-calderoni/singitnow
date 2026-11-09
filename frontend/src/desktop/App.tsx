@@ -16,6 +16,7 @@ import { BackgroundMusic } from "./BackgroundMusic";
 import { Splash, useSplash } from "../shared/Splash";
 import { CompetitionSwitch, RankingCorner, RankingDialog, WinnerScreen } from "./Competition";
 import { Participants } from "./Participants";
+import { VoteBanner } from "./VoteBanner";
 import { SettingsButton } from "./Settings";
 import { LibraryView, SearchView } from "./Views";
 
@@ -406,6 +407,7 @@ export function App() {
         </div>
       )}
       {nowSong && !jukebox && <ApplauseLayer bubbles={applause.bubbles} />}
+      <VoteBanner />
       {toast && <div className="toast">{toast}</div>}
     </div>
   );

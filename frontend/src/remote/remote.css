@@ -1913,3 +1913,39 @@ body {
   flex-direction: column;
   gap: 8px;
 }
+
+/* Competizione: voto del pubblico all'esibizione appena finita */
+.m-sheet.m-vote-back {
+  z-index: 100;
+}
+.m-vote-card {
+  text-align: center;
+  animation: m-dj-pop 0.35s cubic-bezier(0.2, 0.9, 0.3, 1.3);
+}
+.m-vote-song {
+  margin-top: -8px;
+  color: var(--text-2);
+  font-size: 15px;
+}
+.m-vote-stars {
+  display: flex;
+  gap: 4px;
+}
+.m-vote-stars button {
+  padding: 4px;
+  color: var(--text-3, rgba(255, 255, 255, 0.35));
+  transition: transform 0.12s, color 0.12s;
+}
+.m-vote-stars button.on {
+  color: #fbbf24;
+}
+.m-vote-stars button:active {
+  transform: scale(0.88);
+}
+.m-vote-note {
+  font-size: 13px;
+  color: var(--text-2);
+}
+.m-vote-note.err {
+  color: var(--red);
+}

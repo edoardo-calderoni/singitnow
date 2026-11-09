@@ -4,6 +4,7 @@ import { Settings as Gear, X } from "lucide-react";
 import { api } from "../shared/api";
 import { PasswordInput } from "../shared/PasswordInput";
 import { StorageSetting } from "./Storage";
+import { BackupSetting } from "./Backup";
 
 /** Ingranaggio a destra del logo: apre il pannello «Settaggi». */
 export function SettingsButton({ onError }: { onError: (m: string) => void }) {
@@ -73,6 +74,7 @@ function SettingsDialog({ onClose, onError }: { onClose: () => void; onError: (m
           onChange={(v) => toggle("record", v)}
         />
         <StorageSetting onError={onError} />
+        <BackupSetting onError={onError} />
         <AdminPasswordSetting onToast={onError} />
       </div>
     </div>

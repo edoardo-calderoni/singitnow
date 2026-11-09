@@ -35,6 +35,7 @@ export function App() {
     else if (event === "show_wifi") showWifi(data?.seconds ?? 10);
     else if (event === "show_ranking") showRanking(data?.seconds ?? 10);
     else if (event === "show_stats") setStatsOpen(true);
+    else if (event === "backup") window.dispatchEvent(new CustomEvent("sin-backup", { detail: data }));
     else if (event === "fullscreen") enterFullscreen();
     else if (event === "users") setUsers(Array.isArray(data) ? data : []);
     else if (event === "user_joined" && data?.name) requests.pushJoin(data.name);

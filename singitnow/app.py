@@ -18,7 +18,8 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from . import (
-    __version__, admin, audio, avatars, competition, config, halloffame, mics, mode, names, party, people, profiles,
+    __version__, admin, audio, avatars, backup, competition, config, halloffame, mics, mode, names, party, people,
+    profiles,
     recordings, stats, storage, wifi, youtube,
 )
 from .events import hub
@@ -1001,6 +1002,61 @@ def audience_vote(req: VoteReq):
     if why:
         raise HTTPException(409, why)
     return competition.public()
+
+
+# ------------------------------------------------------------------ backup della libreria
+class BackupReq(BaseModel):
+    full: bool = False  # anche video, tracce e registrazioni
+
+
+@app.get("/api/admin/backup", dependencies=[Depends(admin.require_control)])
+def backup_info():
+    """Dimensione prevista dei due tipi di backup e cartella dove finiscono."""
+    return backup.estimate() | {"folder": str(backup.downloads_dir()), "running": backup._state.get("running", False)}
+
+
+@app.post("/api/admin/backup", dependencies=[Depends(admin.require_control)])
+def backup_export(req: BackupReq):
+    """Esporta la libreria in un .zip nella cartella Download (in background: evento "backup")."""
+    try:
+        backup.start_export(req.full)
+    except RuntimeError as e:
+        raise HTTPException(409, str(e))
+    return {"ok": True}
+
+
+@app.post("/api/admin/backup/open")
+def backup_open_folder(request: Request):
+    """Apre la cartella dei backup in Esplora file (solo dal PC)."""
+    import os
+
+    if not admin.is_local(request):
+        raise HTTPException(403)
+    os.startfile(backup.downloads_dir())  # type: ignore[attr-defined]  # solo Windows
+    return {"ok": True}
+
+
+@app.post("/api/admin/restore", dependencies=[Depends(admin.require_control)])
+async def backup_restore(request: Request):
+    """Importa un backup (.zip nel corpo della richiesta): brani, testi, voti, profili e foto."""
+    import tempfile
+
+    with tempfile.NamedTemporaryFile(suffix=".zip", delete=False, dir=config.DATA_DIR) as tmp:
+        async for chunk in request.stream():
+            tmp.write(chunk)
+        path = Path(tmp.name)
+    try:
+        summary = await run_in_threadpool(backup.restore, path)
+    except (ValueError, KeyError, OSError) as e:
+        raise HTTPException(400, f"Backup non valido: {e}")
+    except Exception as e:  # zip rovinato
+        raise HTTPException(400, f"Backup non leggibile: {e}")
+    finally:
+        path.unlink(missing_ok=True)
+    pipeline.refresh_queue()
+    pipeline.start()  # i brani da riscaricare partono subito
+    hub.publish("avatars", avatars.public_map())
+    return summary
 
 
 # ------------------------------------------------------------------ spazio su disco

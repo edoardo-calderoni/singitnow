@@ -240,6 +240,15 @@ export interface Wifi {
 }
 
 /** Il gettone da amministratore (se c'è) accompagna ogni richiesta: abilita i comandi del player. */
+/** Gettone amministratore salvato su questo dispositivo ("" se non c'è). */
+export function authToken(): string {
+  try {
+    return localStorage.getItem("sin.adminToken") ?? "";
+  } catch {
+    return "";
+  }
+}
+
 function authHeaders(body: unknown): Record<string, string> {
   const h: Record<string, string> = body ? { "Content-Type": "application/json" } : {};
   try {
@@ -302,6 +311,9 @@ export const api = {
     req<ScoreSaved>("POST", "/api/scores", { song_id, singer, score, label, entry_id }),
   deleteSong: (id: string) => req("DELETE", `/api/songs/${id}`),
   storage: () => req<StorageReport>("GET", "/api/admin/storage"),
+  backupInfo: () => req<{ data: number; full: number; folder: string; running: boolean }>("GET", "/api/admin/backup"),
+  startBackup: (full: boolean) => req("POST", "/api/admin/backup", { full }),
+  openBackupFolder: () => req("POST", "/api/admin/backup/open"),
   clearKeys: (song_id?: string) => req("POST", "/api/admin/storage/keys", { song_id: song_id ?? null }),
   clearWork: () => req("POST", "/api/admin/storage/work"),
   retry: (id: string) => req("POST", `/api/songs/${id}/retry`),

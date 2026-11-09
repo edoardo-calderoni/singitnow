@@ -258,7 +258,8 @@ class Pipeline:
             for ph, needed in (
                 ("download", not (song.dir / "video.mp4").exists()),
                 ("separate", not (vocals_m4a.exists() and inst_m4a.exists())),
-                ("lyrics", True),
+                # brano ripreso da un backup: il testo (magari corretto a mano) è già quello giusto
+                ("lyrics", not (song.dir / "lyrics.keep").exists()),
             )
             if needed
         ]
@@ -278,8 +279,12 @@ class Pipeline:
             self._fetch_cover(sid)
 
             # 3. Testo sincronizzato
-            library.update(sid, status=LYRICS, progress=_span(P_LYRICS, 0), step="Cerco il testo online…")
-            self._run_phase(sid, "lyrics", lambda: self._build_lyrics(sid, vocals_m4a))
+            if "lyrics" in todo:
+                library.update(sid, status=LYRICS, progress=_span(P_LYRICS, 0), step="Cerco il testo online…")
+                self._run_phase(sid, "lyrics", lambda: self._build_lyrics(sid, vocals_m4a))
+            else:
+                library.update(sid, status=LYRICS, progress=_span(P_LYRICS, 0.9), step="Testo dal backup…")
+                (song.dir / "lyrics.keep").unlink(missing_ok=True)
             self._check_cancel(sid)
             library.update(sid, progress=_span(P_LYRICS, 0.99), step="Preparo le note per l'intonazione…")
             self._build_pitch(sid)

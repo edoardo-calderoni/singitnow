@@ -691,8 +691,9 @@ _HOP = 0.02  # risoluzione dell'inviluppo della voce (secondi)
 
 
 # se cambia, i testi già in libreria vengono riallineati alla voce all'avvio
-# (4: note tenute, fix_held_notes; 5: ogni parola tenuta si allunga, non solo l'ultima della riga)
-SNAP_VERSION = 5
+# (4: note tenute, fix_held_notes; 5: ogni parola tenuta si allunga, non solo l'ultima della riga;
+#  6: la nota tenuta finisce al primo stacco dopo le sillabe della parola)
+SNAP_VERSION = 6
 _PHRASE_RANGE = 15.0  # dB sotto il volume tipico della frase entro cui la voce conta come «cantato»
 
 
@@ -768,18 +769,30 @@ def _sustain(db, thr: float, start: int, limit: int) -> int:
     return end
 
 
-def extend_to_voice(lines: list[Line], voice) -> int:
-    """Ogni parola dura quanto la nota tenuta dal cantante.
+def extend_to_voice(lines: list[Line], voice, sung: list[Word] | None = None) -> int:
+    """Ogni parola dura quanto la nota tenuta dal cantante, e non di più.
 
     Whisper chiude la parola poco dopo l'attacco anche quando il cantante la tiene a lungo
     («primaveraaa…», «E… EEEEEE… fateme»): la riga sembrava finita, o restava ferma a metà, mentre
     si cantava ancora. La fine si sposta in avanti finché la voce resta al livello della frase,
-    senza arrivare alla parola (o alla riga) successiva. Restituisce le parole allungate.
+    senza arrivare alla parola (o alla riga) successiva.
+
+    La nota tenuta però finisce al primo stacco di sillaba dopo la fine della parola sentita da
+    Whisper (`sung`, che chiude le note lunghe un po' presto ma sa quando la parola è finita): dopo
+    «un mattoooo» la voce restava sulla stessa nota con un «na-na-na» (o un coro), e la parola si
+    colorava piano per altri 6 secondi. Gli stacchi prima di quel punto sono vibrato o consonanti
+    della parola stessa; le pause vere fermano già la voce che cala. Le note finali allungate così
+    in passato si riaccorciano. Restituisce le parole cambiate.
     """
+    import bisect
+
     import numpy as np
 
     db, song_thr = voice
     n = len(db)
+    # stacchi dentro la voce (consonanti): non le ripartenze dopo il silenzio
+    cuts = [i for i in voice_onsets(voice) if db[i] > song_thr] if sung else []
+    heard = _heard(sung or [])
     fixed = 0
     for i, l in enumerate(lines):
         if not l.words:
@@ -794,13 +807,24 @@ def extend_to_voice(lines: list[Line], voice) -> int:
                 continue
             last = j + 1 == len(l.words)
             nxt = nxt_line - 0.15 if last else l.words[j + 1].start
+            # fine della nota: il primo stacco dopo la fine della parola sentita da Whisper
+            h = heard(w.text, w.start - 1.0, w.start + 1.0) if cuts else None
+            cut = n * _HOP
+            if h is not None:
+                k = bisect.bisect_right(cuts, int((max(h[1], w.start) + 0.1) / _HOP))
+                cut = cuts[k] * _HOP if k < len(cuts) else cut
+            if last and w.end - cut > 0.5 and cut > w.start + 0.3:
+                w.end = cut  # allungata in passato oltre la nota (testi già salvati)
+                fixed += 1
+                continue
             we = int(w.end / _HOP)
-            if we >= n or nxt - w.end < 0.2:
-                continue  # la parola dopo attacca subito: niente da allungare
+            if we >= n or min(nxt, cut) - w.end < 0.2:
+                continue  # la parola dopo (o la sillaba dopo) attacca subito: niente da allungare
             # limite contato dall'inizio della parola: ripetere il controllo non la allunga ancora
-            end = _sustain(db, thr, we, min(n, int(min(nxt, w.start + _SUSTAIN_MAX) / _HOP)))
+            limit = min(nxt, cut, w.start + _SUSTAIN_MAX)
+            end = _sustain(db, thr, we, min(n, int(limit / _HOP)))
             if (end - we) * _HOP >= 0.2:
-                w.end = min(end * _HOP, nxt)
+                w.end = min(end * _HOP, limit)
                 fixed += 1
     return fixed
 
@@ -1029,12 +1053,13 @@ def resnap_saved(song_dir: Path) -> int | None:
         if l.get("words")
     ]
     voice = voice_activity(_load_16k(vocals))
-    fixed = snap_to_voice(lines, voice) + extend_to_voice(lines, voice)
+    fixed = snap_to_voice(lines, voice)
     try:  # trascrizione di Whisper salvata: serve a confermare le correzioni sulle note tenute
         wj = json.loads((song_dir / "whisper.json").read_text(encoding="utf-8"))
         sung = [Word(t, s, e) for seg in wj["segments"] for t, s, e in seg]
     except (OSError, ValueError, KeyError, TypeError):
         sung = []
+    fixed += extend_to_voice(lines, voice, sung)
     if sung:
         fixed += fix_held_notes(lines, voice, sung, data.get("language", ""))
     out = to_json(lines, data.get("source", ""), data.get("language", ""))
@@ -1146,7 +1171,7 @@ def build(
                 log.exception("Allineamento forzato non riuscito: uso i tempi stimati")
             clamp_line_starts(lines)
             snap_to_voice(lines, voiced)
-            extend_to_voice(lines, voiced)
+            extend_to_voice(lines, voiced, sung)
             fix_held_notes(lines, voiced, sung, language)
             return to_json(lines, "manual+whisper" if text is not None else "lrclib+whisper", language)
     if lines and synced:
@@ -1162,7 +1187,7 @@ def build(
     if sung_segments:
         lines = [Line(part) for seg in sung_segments for part in _split_long(seg)]
         snap_to_voice(lines, voiced)
-        extend_to_voice(lines, voiced)
+        extend_to_voice(lines, voiced, sung)
         return to_json(lines, "whisper", language)
     if lines:
         _distribute([w for l in lines for w in l.words], 0, duration)

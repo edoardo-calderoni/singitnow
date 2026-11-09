@@ -202,3 +202,34 @@ def test_allungare_due_volte_non_cambia_niente():
     assert first == pytest.approx(9.0, abs=0.05)  # al massimo 8 s dall'inizio della parola
     extend_to_voice([line], (db, -40.0))
     assert line.words[-1].end == first
+
+
+def test_nota_tenuta_finisce_al_primo_stacco_dopo_la_parola():
+    """«un mattoooo» e poi, sulla stessa nota, «na-na-na»: la parola non si colora fino alla fine."""
+    import numpy as np
+
+    from singitnow.lyrics import extend_to_voice
+
+    db = np.full(int(30 / _HOP), -60.0)
+    db[int(1.0 / _HOP) : int(20 / _HOP)] = -12.0  # «matto» tenuto e poi na-na-na sulla stessa nota
+    for t in (1.7, 3.6, 4.8, 6.0, 7.2):  # «t» di matto, poi l'attacco di ogni «na»
+        db[int(round(t / _HOP))] = -30.0
+    line = Line([Word("Un", 0.5, 1.0), Word("matto", 1.0, 1.5)])
+    sung = [Word("un", 0.5, 1.0), Word("mato", 1.05, 2.9)]  # Whisper chiude la nota un po' presto
+    extend_to_voice([line], (db, -40.0), sung)
+    assert line.words[-1].end == pytest.approx(3.6, abs=0.05)  # fino al primo «na», non 8 s
+
+
+def test_nota_finale_allungata_in_passato_si_accorcia():
+    import numpy as np
+
+    from singitnow.lyrics import extend_to_voice
+
+    db = np.full(int(30 / _HOP), -60.0)
+    db[int(1.0 / _HOP) : int(20 / _HOP)] = -12.0
+    for t in (1.7, 3.6, 4.8, 6.0, 7.2):
+        db[int(round(t / _HOP))] = -30.0
+    line = Line([Word("Un", 0.5, 1.0), Word("matto", 1.0, 9.0)])  # testo salvato prima della correzione
+    sung = [Word("un", 0.5, 1.0), Word("mato", 1.05, 2.9)]
+    extend_to_voice([line], (db, -40.0), sung)
+    assert line.words[-1].end == pytest.approx(3.6, abs=0.05)

@@ -137,6 +137,12 @@ def can_control(request: Request, token: str | None) -> bool:
     return host in _LOCAL or is_admin(token)
 
 
+def require_local(request: Request) -> None:
+    """Solo dall'app sul PC (non dai telefoni, nemmeno degli amministratori)."""
+    if not is_local(request):
+        raise HTTPException(403, "Si può fare solo dall'app sul PC")
+
+
 def require_control(request: Request, x_admin_token: str | None = Header(default=None)) -> None:
     """Comandi del player: li può dare il PC stesso (la TV) oppure un amministratore dal telefono."""
     if not can_control(request, x_admin_token):

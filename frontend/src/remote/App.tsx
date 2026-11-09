@@ -72,6 +72,7 @@ import { AppQrCard, WifiCard } from "./Wifi";
 import { adminCheck, adminLogin, adminLogout, getAdminToken } from "./admin";
 import {
   ApplauseButton,
+  ReactionBar,
   EnableVibration,
   entryStarts,
   fmtWait,
@@ -743,6 +744,7 @@ function QueueTab({
             {/* pausa, stop, avanti e volumi: solo per gli amministratori */}
             {isAdmin && <AdminControls name={name} player={player} />}
             {!singsIn(now, name) && !jukebox && <ApplauseButton name={name} />}
+            {!singsIn(now, name) && !jukebox && <ReactionBar name={name} />}
           </div>
         </div>
       )}

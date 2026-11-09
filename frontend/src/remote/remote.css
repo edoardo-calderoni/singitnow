@@ -2391,3 +2391,45 @@ body {
   text-align: left;
   font-weight: 700;
 }
+
+/* ---------- reazioni */
+.m-react {
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 10px;
+}
+.m-react-btn {
+  position: relative;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  border: 1px solid var(--border-strong);
+  background: var(--surface-2);
+  font-size: 24px;
+  line-height: 1;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.m-react-btn:active {
+  transform: scale(0.88);
+}
+.m-react.floating {
+  position: fixed;
+  right: 18px;
+  bottom: calc(176px + env(safe-area-inset-bottom));
+  z-index: 20;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+}
+.m-react.floating .m-react-btn {
+  width: 44px;
+  height: 44px;
+  margin: 0 auto;
+  font-size: 22px;
+  background: rgba(29, 29, 48, 0.85);
+  backdrop-filter: blur(6px);
+}

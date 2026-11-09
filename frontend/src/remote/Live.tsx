@@ -287,6 +287,7 @@ export function LyricsTab({
         </div>
       </div>
       {!singsIn(now, name) && !jukebox && <ApplauseButton name={name} floating />}
+      {!singsIn(now, name) && !jukebox && <ReactionBar name={name} floating />}
       {lines === null ? (
         <div className="empty">
           <p>Carico il testo…</p>
@@ -816,6 +817,47 @@ export function ApplauseButton({ name, floating }: { name: string; floating?: bo
         </span>
       ))}
     </button>
+  );
+}
+
+// ------------------------------------------------------------------ reazioni
+export const REACTIONS = ["🔥", "😂", "😍", "🤘", "😮"];
+const REACTION_MIN_GAP = 350; // ms fra due reazioni dallo stesso telefono (il server ne accetta 5 ogni 3 s)
+
+/** Emoji da mandare a chi sta cantando: sulla TV volano con la propria foto. */
+export function ReactionBar({ name, floating }: { name: string; floating?: boolean }) {
+  const [pops, setPops] = useState<{ k: number; e: string }[]>([]);
+  const last = useRef(0);
+  const seq = useRef(0);
+  const send = (emoji: string) => {
+    const now = performance.now();
+    if (now - last.current < REACTION_MIN_GAP) return;
+    last.current = now;
+    vibrate([10]);
+    fetch("/api/reaction", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name, emoji }),
+    }).catch(() => {});
+    const k = ++seq.current;
+    setPops((p) => [...p.slice(-6), { k, e: emoji }]);
+    window.setTimeout(() => setPops((p) => p.filter((x) => x.k !== k)), 900);
+  };
+  return (
+    <div className={`m-react ${floating ? "floating" : ""}`}>
+      {REACTIONS.map((e) => (
+        <button key={e} type="button" className="m-react-btn" onClick={() => send(e)} aria-label={`Reazione ${e}`}>
+          {e}
+          {pops
+            .filter((p) => p.e === e)
+            .map((p) => (
+              <span key={p.k} className="m-clap-pop">
+                {e}
+              </span>
+            ))}
+        </button>
+      ))}
+    </div>
   );
 }
 

@@ -9,6 +9,7 @@ import { enterFullscreen, exitFullscreen, Player, toggleFullscreen } from "./Pla
 import { RequestEvent, RequestToasts, useRequests } from "./Requests";
 import { HandoverBanner, useHandover } from "./Handover";
 import { ApplauseLayer, useApplause } from "./Applause";
+import { ReactionLayer, useReactions } from "./Reactions";
 import { useJukebox } from "../shared/mode";
 import { DjPicker, ModeSeg } from "./ModeSeg";
 import { ResultsHost, useResultsOpen, winnerJustCelebrated } from "./ResultsPanel";
@@ -28,11 +29,13 @@ type Tab = "library" | "search";
 export function App() {
   const requests = useRequests();
   const applause = useApplause();
+  const reactions = useReactions();
   const { songs, playlist, connected, player } = useLive((event, data) => {
     if (event === "player_command") window.dispatchEvent(new CustomEvent("player-command", { detail: data }));
     // brani aggiunti dal PC stesso: l'avviso va solo sui telefoni
     else if (event === "request") !data?.from_pc && requests.push(data as RequestEvent);
     else if (event === "applause") applause.push(data.name);
+    else if (event === "reaction") reactions.push(data.name, data.emoji);
     else if (event === "show_qr") showQr(data?.seconds ?? 10);
     else if (event === "show_wifi") showWifi(data?.seconds ?? 10);
     else if (event === "show_ranking") showRanking(data?.seconds ?? 10);
@@ -449,6 +452,7 @@ export function App() {
         </div>
       )}
       {nowSong && !jukebox && <ApplauseLayer bubbles={applause.bubbles} />}
+      {nowSong && !jukebox && <ReactionLayer items={reactions.items} />}
       {toast && <div className="toast">{toast}</div>}
     </div>
   );

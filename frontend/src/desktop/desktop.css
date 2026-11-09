@@ -3760,3 +3760,132 @@ body {
   font-family: var(--font-display);
   font-variant-numeric: tabular-nums;
 }
+
+/* ---------- reazioni dai telefoni: emoji che salgono dal lato sinistro */
+.reactions {
+  position: fixed;
+  top: 0;
+  left: 1.5vw;
+  z-index: 58;
+  width: 16vw;
+  height: 62vh;
+  pointer-events: none;
+  overflow: visible;
+}
+.reaction {
+  position: absolute;
+  bottom: 0;
+  width: clamp(60px, 5vw, 130px);
+  margin-left: calc(clamp(60px, 5vw, 130px) / -2);
+  animation: reaction-rise var(--dur) cubic-bezier(0.25, 0.6, 0.4, 1) forwards;
+  will-change: transform, opacity;
+}
+.reaction-emoji {
+  display: block;
+  font-size: clamp(44px, 4vw, 110px);
+  line-height: 1;
+  text-align: center;
+  filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.5));
+}
+.reaction-avatar.avatar {
+  position: absolute;
+  right: -6%;
+  bottom: -8%;
+  width: 42%;
+  height: auto;
+  aspect-ratio: 1;
+  font-size: clamp(10px, 0.8vw, 22px);
+  border: 2px solid rgba(255, 255, 255, 0.85);
+}
+@keyframes reaction-rise {
+  0% {
+    transform: translate(0, 0) scale(calc(var(--size) * 0.3)) rotate(0deg);
+    opacity: 0;
+  }
+  12% {
+    transform: translate(calc(var(--drift) * 0.15), -6vh) scale(calc(var(--size) * 1.15)) rotate(calc(var(--spin) * 0.3));
+    opacity: 1;
+  }
+  20% {
+    transform: translate(calc(var(--drift) * 0.25), -10vh) scale(var(--size)) rotate(calc(var(--spin) * 0.4));
+  }
+  70% {
+    opacity: 0.95;
+  }
+  100% {
+    transform: translate(var(--drift), -58vh) scale(calc(var(--size) * 0.85)) rotate(var(--spin));
+    opacity: 0;
+  }
+}
+
+/* ---------- brani con problemi (Settaggi) */
+.health-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.health-list > li {
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr) auto;
+  gap: 12px;
+  align-items: start;
+  padding: 10px 2px;
+  border-bottom: 1px solid var(--border);
+}
+.health-list > li > img,
+.health-noimg {
+  width: 52px;
+  height: 52px;
+  border-radius: 8px;
+  object-fit: cover;
+  background: var(--surface-2);
+}
+.health-body {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  font-size: 14px;
+}
+.health-body ul {
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.health-issue {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text-2);
+}
+.health-issue em {
+  font-style: normal;
+  font-weight: 700;
+}
+.health-issue.error svg,
+.health-issue.error em {
+  color: var(--red);
+}
+.health-issue.warn svg,
+.health-issue.warn em {
+  color: var(--amber);
+}
+.health-issue.info svg,
+.health-issue.info em {
+  color: var(--cyan);
+}
+.health-issue .icon-btn {
+  margin-left: auto;
+  padding: 2px;
+  opacity: 0.6;
+}
+.health-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+  max-width: 300px;
+}

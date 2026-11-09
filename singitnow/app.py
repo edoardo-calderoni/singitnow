@@ -19,7 +19,7 @@ from pydantic import BaseModel
 
 from . import (
     __version__, admin, audio, avatars, backup, competition, config, halloffame, mics, mode, names, party, people,
-    keyfit, profiles, quiz,
+    health, keyfit, profiles, quiz,
     recordings, stats, storage, wifi, youtube,
 )
 from .events import hub
@@ -943,6 +943,53 @@ def applause(req: ApplauseReq):
     stats.applause(playlist.now_playing.id)
     hub.publish("applause", {"name": name})
     return {"ok": True}
+
+
+# ------------------------------------------------------------------ reazioni
+REACTIONS = ("🔥", "😂", "😍", "🤘", "😮")
+_reaction_log: dict[str, list[float]] = {}
+REACTION_MAX = 5  # reazioni per persona…
+REACTION_WINDOW = 3.0  # …ogni 3 secondi
+
+
+class ReactionReq(BaseModel):
+    name: str
+    emoji: str
+
+
+@app.post("/api/reaction")
+def reaction(req: ReactionReq):
+    """Una reazione dal telefono a chi sta cantando: sulla TV vola l'emoji con la foto di chi la manda."""
+    import time
+
+    name = req.name.strip()[:40]
+    if not name or req.emoji not in REACTIONS or not playlist.now_playing or mode.is_jukebox():
+        return {"ok": False}
+    now = time.monotonic()
+    recent = [t for t in _reaction_log.get(name, []) if now - t < REACTION_WINDOW]
+    if len(recent) >= REACTION_MAX:
+        return {"ok": False}
+    recent.append(now)
+    _reaction_log[name] = recent
+    hub.publish("reaction", {"name": name, "emoji": req.emoji})
+    return {"ok": True}
+
+
+# ------------------------------------------------------------------ brani con problemi (solo dal PC)
+@app.get("/api/admin/health", dependencies=[Depends(admin.require_local)])
+async def health_report():
+    return await run_in_threadpool(health.report)
+
+
+class HealthIgnoreReq(BaseModel):
+    song_id: str
+    code: str
+
+
+@app.post("/api/admin/health/ignore", dependencies=[Depends(admin.require_local)])
+async def health_ignore(req: HealthIgnoreReq):
+    health.ignore(req.song_id, req.code)
+    return await run_in_threadpool(health.report)
 
 
 # ------------------------------------------------------------------ punteggi della serata

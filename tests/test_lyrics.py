@@ -150,3 +150,55 @@ def test_riga_senza_note_tenute_non_cambia():
     sung = [Word("fatemi", 4.8, 5.6), Word("cantare", 5.6, 6.6)]
     assert fix_held_notes([line], held_voice(), sung, "it") == 0
     assert [w.start for w in line.words] == [4.8, 5.7]
+
+
+def test_abbinamento_non_salta_alla_riga_dopo():
+    """«Sta pe' strada…»: Whisper sente «per», e il «Pe'» identico è l'inizio della riga dopo.
+    Prima l'abbinamento prendeva quello e perdeva tutte le parole in mezzo."""
+    from singitnow.lyrics import _match_in_window
+
+    line = Line([Word(t) for t in ("Sta", "pe'", "strada,", "elemosina", "un", "core")])
+    heard = sung(("Sta", 175.5), ("per", 176.7), ("strada", 177.2), ("e", 177.9), ("l", 178.5),
+                 ("'emosina", 178.6), ("ancora", 179.4), ("Pe'", 180.4), ("quel", 182.2))
+    _match_in_window(line, 170.0, 185.0, heard, [w.start for w in heard])
+    assert [w.start for w in line.words[:4]] == [175.5, 176.7, 177.2, 178.6]
+    assert line.words[1].run >= 3  # «Sta per strada» abbinate in sequenza
+
+
+def test_parole_simili():
+    from singitnow.lyrics import _similar
+
+    assert _similar("pe", "per") > 0
+    assert _similar("fateme", "fatemi") > 0
+    assert _similar("pe", "e") == 0  # le parole corte devono somigliarsi di più
+    assert _similar("un", "in") == 0
+
+
+def test_nota_tenuta_in_mezzo_alla_riga_si_colora_tutta():
+    """«E… EEEEEE» tenuta fino alla parola dopo: la E resta colorata finché la si canta."""
+    import numpy as np
+
+    from singitnow.lyrics import extend_to_voice
+
+    db = np.full(int(12 / _HOP), -60.0)
+    db[int(1.0 / _HOP) : int(4.5 / _HOP)] = -12.0  # E tenuta
+    db[int(5.0 / _HOP) : int(6.5 / _HOP)] = -12.0  # fateme cantààà
+    line = Line([Word("E", 1.0, 1.3), Word("fateme", 5.0, 5.5), Word("cantà", 5.5, 5.8)])
+    extend_to_voice([line], (db, -40.0))
+    assert line.words[0].end == pytest.approx(4.48, abs=0.05)  # fino a dove si sente la E
+    assert line.words[-1].end == pytest.approx(6.48, abs=0.05)
+
+
+def test_allungare_due_volte_non_cambia_niente():
+    import numpy as np
+
+    from singitnow.lyrics import extend_to_voice
+
+    db = np.full(int(30 / _HOP), -60.0)
+    db[int(1.0 / _HOP) : int(25 / _HOP)] = -12.0  # coro che non finisce più
+    line = Line([Word("Un", 0.5, 1.0), Word("matto", 1.0, 1.5)])
+    extend_to_voice([line], (db, -40.0))
+    first = line.words[-1].end
+    assert first == pytest.approx(9.0, abs=0.05)  # al massimo 8 s dall'inizio della parola
+    extend_to_voice([line], (db, -40.0))
+    assert line.words[-1].end == first

@@ -373,21 +373,67 @@ def _choose_shifts(lines: list[Line], where: dict[str, list[float]]) -> tuple[li
     return [cands[c] for c in path], [ev[i][c] for i, c in enumerate(path)]
 
 
+def _similar(a: str, b: str) -> float:
+    """Somiglianza fra una parola del testo e una cantata (già normalizzate), 0 se troppo diverse.
+
+    Whisper scrive spesso la parola in italiano standard o la spezza sull'apostrofo («pe'»/«per»,
+    «elemosina»/«emosina», «fateme»/«fatemi»): contano anche le parole quasi uguali. Le parole corte
+    devono somigliarsi di più («pe» non è «e»)."""
+    if not a or not b:
+        return 0.0
+    if a == b:
+        return 1.0
+    r = SequenceMatcher(None, a, b, autojunk=False).ratio()
+    return r if r >= (0.75 if min(len(a), len(b)) <= 3 else 0.6) else 0.0
+
+
 def _match_in_window(line: Line, lo: float, hi: float, sung: list[Word], times: list[float]) -> None:
-    """Abbina le parole della riga a quelle cantate solo dentro il suo tratto di video, nell'ordine."""
+    """Abbina le parole della riga a quelle cantate solo dentro il suo tratto di video, nell'ordine.
+
+    Si cerca l'abbinamento migliore per tutta la riga (somma delle somiglianze), non il primo che
+    capita: prima una parola che compariva anche all'inizio della riga dopo («Sta pe' strada…» →
+    il «Pe'» di «Pe' quer padre») poteva portarsi via tutte le parole in mezzo.
+    """
     import bisect
 
     j0 = bisect.bisect_left(times, lo)
     j1 = bisect.bisect_right(times, hi)
     a = [_norm(w.text) for w in line.words]
     b = [_norm(s.text) for s in sung[j0:j1]]
-    for blk in SequenceMatcher(None, a, b, autojunk=False).get_matching_blocks():
-        for k in range(blk.size):
-            w, jj = line.words[blk.a + k], j0 + blk.b + k
+    n, m = len(a), len(b)
+    if not n or not m:
+        return
+    sim = [[_similar(x, y) for y in b] for x in a]
+    # best[i][j]: miglior punteggio abbinando a[i:] con b[j:]
+    best = [[0.0] * (m + 1) for _ in range(n + 1)]
+    for i in range(n - 1, -1, -1):
+        for j in range(m - 1, -1, -1):
+            take = best[i + 1][j + 1] + sim[i][j] if sim[i][j] else 0.0
+            best[i][j] = max(take, best[i + 1][j], best[i][j + 1])
+    pairs: list[tuple[int, int]] = []
+    i = j = 0
+    while i < n and j < m:
+        if sim[i][j] and best[i][j] == best[i + 1][j + 1] + sim[i][j]:
+            pairs.append((i, j))
+            i, j = i + 1, j + 1
+        elif best[i][j] == best[i + 1][j]:
+            i += 1
+        else:
+            j += 1
+    # parole abbinate in sequenza (consecutive in entrambi) sono più affidabili di una parola isolata
+    runs: list[list[tuple[int, int]]] = []
+    for p in pairs:
+        if runs and p == (runs[-1][-1][0] + 1, runs[-1][-1][1] + 1):
+            runs[-1].append(p)
+        else:
+            runs.append([p])
+    for run in runs:
+        for i, j in run:
+            w, jj = line.words[i], j0 + j
             s = sung[jj]
             w.start, w.end = s.start, s.end
             w.onset = jj == 0 or s.start - sung[jj - 1].end > 0.15
-            w.run = blk.size  # parole abbinate in sequenza sono più affidabili di una parola isolata
+            w.run = len(run)
 
 
 def _anchor_to_lrc(lines: list[Line], sung: list[Word], duration: float = 0.0) -> tuple[list[Line], float]:
@@ -644,8 +690,9 @@ def force_align(lines: list[Line], audio, language: str) -> int:
 _HOP = 0.02  # risoluzione dell'inviluppo della voce (secondi)
 
 
-# se cambia, i testi già in libreria vengono riallineati alla voce all'avvio (4: note tenute, fix_held_notes)
-SNAP_VERSION = 4
+# se cambia, i testi già in libreria vengono riallineati alla voce all'avvio
+# (4: note tenute, fix_held_notes; 5: ogni parola tenuta si allunga, non solo l'ultima della riga)
+SNAP_VERSION = 5
 _PHRASE_RANGE = 15.0  # dB sotto il volume tipico della frase entro cui la voce conta come «cantato»
 
 
@@ -703,45 +750,58 @@ def snap_to_voice(lines: list[Line], voice) -> int:
     return fixed
 
 
-_SUSTAIN_MAX = 8.0  # s: quanto può allungarsi al massimo l'ultima parola di una riga
+_SUSTAIN_MAX = 8.0  # s: durata massima di una parola tenuta (dall'inizio della parola)
 _SUSTAIN_DIP = 0.3  # s: cali più brevi di così (vibrato, consonanti) non interrompono la nota tenuta
 
 
-def extend_to_voice(lines: list[Line], voice) -> int:
-    """L'ultima parola di ogni riga dura quanto la nota tenuta dal cantante.
+def _sustain(db, thr: float, start: int, limit: int) -> int:
+    """Ultimo blocco, da `start` a `limit`, in cui la voce tiene ancora la nota (cali brevi ammessi)."""
+    dip = int(_SUSTAIN_DIP / _HOP)
+    end, quiet = start, 0
+    for k in range(start, limit):
+        if db[k] > thr:
+            end, quiet = k, 0
+        else:
+            quiet += 1
+            if quiet > dip:
+                break
+    return end
 
-    Whisper chiude l'ultima parola poco dopo l'attacco anche quando il cantante la tiene a lungo
-    («primaveraaa…»): la riga sembrava finita e lo schermo mostrava il conto alla rovescia
-    mentre si cantava ancora. La fine si sposta in avanti finché la voce resta al livello della
-    frase, senza arrivare alla riga successiva. Restituisce le righe allungate.
+
+def extend_to_voice(lines: list[Line], voice) -> int:
+    """Ogni parola dura quanto la nota tenuta dal cantante.
+
+    Whisper chiude la parola poco dopo l'attacco anche quando il cantante la tiene a lungo
+    («primaveraaa…», «E… EEEEEE… fateme»): la riga sembrava finita, o restava ferma a metà, mentre
+    si cantava ancora. La fine si sposta in avanti finché la voce resta al livello della frase,
+    senza arrivare alla parola (o alla riga) successiva. Restituisce le parole allungate.
     """
     import numpy as np
 
     db, song_thr = voice
     n = len(db)
-    dip = int(_SUSTAIN_DIP / _HOP)
     fixed = 0
     for i, l in enumerate(lines):
         if not l.words:
             continue
-        last = l.words[-1]
-        nxt = next((m.words[0].start for m in lines[i + 1 :] if m.words), n * _HOP)
-        la, lb = int(l.words[0].start / _HOP), int(last.end / _HOP)
+        nxt_line = next((m.words[0].start for m in lines[i + 1 :] if m.words), n * _HOP)
+        la, lb = int(l.words[0].start / _HOP), int(l.words[-1].end / _HOP)
         if lb - la < 5 or lb >= n:
             continue
         thr = max(song_thr, float(np.percentile(db[la:lb], 75)) - _PHRASE_RANGE)
-        limit = min(n, int(min(nxt - 0.15, last.end + _SUSTAIN_MAX) / _HOP))
-        end, quiet = lb, 0
-        for k in range(lb, limit):
-            if db[k] > thr:
-                end, quiet = k, 0
-            else:
-                quiet += 1
-                if quiet > dip:
-                    break
-        if (end - lb) * _HOP >= 0.2:
-            last.end = end * _HOP
-            fixed += 1
+        for j, w in enumerate(l.words):
+            if w.start < 0:
+                continue
+            last = j + 1 == len(l.words)
+            nxt = nxt_line - 0.15 if last else l.words[j + 1].start
+            we = int(w.end / _HOP)
+            if we >= n or nxt - w.end < 0.2:
+                continue  # la parola dopo attacca subito: niente da allungare
+            # limite contato dall'inizio della parola: ripetere il controllo non la allunga ancora
+            end = _sustain(db, thr, we, min(n, int(min(nxt, w.start + _SUSTAIN_MAX) / _HOP)))
+            if (end - we) * _HOP >= 0.2:
+                w.end = min(end * _HOP, nxt)
+                fixed += 1
     return fixed
 
 
@@ -750,6 +810,11 @@ _ONSET_WIN = 0.15  # s: entro quanto, prima e dopo il calo, la voce deve tornare
 _HELD_TRIGGER = 1.0  # s di nota già tenuta prima dell'inizio di una parola: la riga va ricontrollata
 _LONG = 0.7  # s di voce oltre i quali una sillaba è «tenuta»
 _VOWEL_GROUPS = re.compile(r"[aeiouy]+")
+
+
+def _swollen_limit(syll: int) -> float:
+    """Durata oltre la quale una parola di `syll` sillabe (senza nota finale) è sospetta."""
+    return 0.6 * syll + 1.0
 
 
 def syllables(word: str, language: str = "") -> int:
@@ -846,18 +911,30 @@ def fix_held_notes(
         def voiced(t0: float, t1: float) -> float:
             return float(np.count_nonzero(db[int(t0 / _HOP) : int(t1 / _HOP)] > thr)) * _HOP
 
-        # parole che iniziano in mezzo a una nota tenuta senza stacchi
+        lengths = [voiced(a, b) for a, b in zip(starts, ends)]
+        sylls = [syllables(w.text, language) for w in words]
+
+        # A) parole che iniziano in mezzo a una nota tenuta senza stacchi
         held = []
+        # B) parole di più sillabe che si portano dietro una nota tenuta non sull'ultima sillaba:
+        #    la nota tenuta è della parola prima, la parola inizia dopo
+        swollen = []
         for j, w in enumerate(words[1:], 1):
             k = int(np.searchsorted(starts, w.start, side="right")) - 1
             if k >= 0 and w.start - starts[k] >= _HELD_TRIGGER and voiced(starts[k], w.start) >= _HELD_TRIGGER:
                 held.append(j)
+                continue
+            nxt = words[j + 1].start if j + 1 < len(words) else w.end
+            inside = [i for i in range(len(starts)) if w.start - 0.1 <= starts[i] < nxt - 0.1]
+            if (
+                sylls[j] >= 2
+                and nxt - w.start > _swollen_limit(sylls[j])
+                and any(lengths[i] >= _HELD_TRIGGER for i in inside[:-1])
+            ):
+                swollen.append(j)
         segs = len(starts)
-        if not held or segs < len(words):
+        if not (held or swollen) or segs < len(words):
             continue
-
-        lengths = [voiced(a, b) for a, b in zip(starts, ends)]
-        sylls = [syllables(w.text, language) for w in words]
 
         def cost(j: int, a: int, b: int) -> float:
             """Parola j sugli attacchi a..b-1."""
@@ -905,6 +982,12 @@ def fix_held_notes(
             h = heard(w.text, min(old_t, new_t) - 1.0, max(old_t, new_t) + 1.0)
             if j in held:
                 if h is None or abs(new_t - h[0]) + 0.5 > abs(old_t - h[0]):
+                    ok = False
+                    break
+                confirmed = True
+            elif j in swollen:
+                # anche Whisper l'ha sentita troppo lunga, e il nuovo inizio cade dentro la parola sentita
+                if h is None or h[1] - h[0] <= _swollen_limit(sylls[j]) or not h[0] <= new_t <= h[1]:
                     ok = False
                     break
                 confirmed = True

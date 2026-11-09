@@ -153,6 +153,27 @@ export interface Competition {
   audience_weight?: number;
 }
 
+/** Spazio su disco: occupazione dei brani (byte) e totali. */
+export interface StorageReport {
+  songs: {
+    id: string;
+    title: string;
+    artist: string;
+    status: string;
+    played_at: number;
+    never_played: boolean;
+    sizes: { video: number; audio: number; keys: number; other: number };
+    total: number;
+  }[];
+  library: number;
+  keys: number;
+  recordings: number;
+  models: number;
+  work: number;
+  free: number;
+  disk: number;
+}
+
 /** Registrazione di un'esibizione (la vede solo chi ha cantato). */
 export interface Recording {
   id: string;
@@ -280,6 +301,9 @@ export const api = {
   addScore: (song_id: string, singer: string, score: number, label = "", entry_id = "") =>
     req<ScoreSaved>("POST", "/api/scores", { song_id, singer, score, label, entry_id }),
   deleteSong: (id: string) => req("DELETE", `/api/songs/${id}`),
+  storage: () => req<StorageReport>("GET", "/api/admin/storage"),
+  clearKeys: (song_id?: string) => req("POST", "/api/admin/storage/keys", { song_id: song_id ?? null }),
+  clearWork: () => req("POST", "/api/admin/storage/work"),
   retry: (id: string) => req("POST", `/api/songs/${id}/retry`),
   patchSong: (id: string, data: Partial<Pick<Song, "artist" | "title" | "language">>) =>
     req<Song>("PATCH", `/api/songs/${id}`, data),

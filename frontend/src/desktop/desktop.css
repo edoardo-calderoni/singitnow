@@ -3219,3 +3219,74 @@ body {
     opacity: 0.3;
   }
 }
+
+/* Spazio su disco */
+.modal.storage-modal {
+  width: min(820px, 100%);
+}
+.storage-totals {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 8px;
+  font-size: 14px;
+  color: var(--text-2);
+}
+.storage-totals > div {
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: var(--surface-2);
+}
+.storage-totals b {
+  display: block;
+  color: var(--text);
+  font-size: 18px;
+}
+.storage-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.storage-filter {
+  flex-direction: row !important;
+  align-items: center;
+  gap: 8px !important;
+  font-size: 14px !important;
+}
+.storage-note {
+  margin: -8px 0 0;
+  color: var(--text-2);
+  font-size: 12px;
+}
+.storage-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.storage-list li {
+  display: grid;
+  grid-template-columns: minmax(0, 1.4fr) minmax(0, 1.6fr) auto auto;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 2px;
+  border-bottom: 1px solid var(--border);
+  font-size: 14px;
+}
+.storage-song {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.storage-song .badge {
+  margin-left: 6px;
+  font-size: 11px;
+}
+.storage-sizes {
+  font-size: 13px;
+}
+.storage-total {
+  white-space: nowrap;
+}
+.storage-row-actions {
+  display: flex;
+  gap: 2px;
+}

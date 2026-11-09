@@ -18,7 +18,7 @@ from pydantic import BaseModel
 
 from . import (
     __version__, admin, audio, avatars, competition, config, halloffame, mics, mode, names, party, people, profiles,
-    recordings, stats, wifi, youtube,
+    recordings, stats, storage, wifi, youtube,
 )
 from .events import hub
 from .library import READY, library
@@ -954,6 +954,29 @@ def audience_vote(req: VoteReq):
     if why:
         raise HTTPException(409, why)
     return competition.public()
+
+
+# ------------------------------------------------------------------ spazio su disco
+class StorageKeysReq(BaseModel):
+    song_id: str | None = None  # None = tutti i brani
+
+
+@app.get("/api/admin/storage", dependencies=[Depends(admin.require_control)])
+def storage_report():
+    """Quanto occupa ogni brano (video, tracce, tonalità trasposte) e lo spazio libero."""
+    return storage.report()
+
+
+@app.post("/api/admin/storage/keys", dependencies=[Depends(admin.require_control)])
+def storage_clear_keys(req: StorageKeysReq):
+    """Elimina le tonalità trasposte (si rigenerano da sole se servono di nuovo)."""
+    return {"freed": storage.clear_keys(req.song_id), "report": storage.report()}
+
+
+@app.post("/api/admin/storage/work", dependencies=[Depends(admin.require_control)])
+def storage_clear_work():
+    """Elimina i residui delle elaborazioni interrotte."""
+    return {"freed": storage.clear_work(), "report": storage.report()}
 
 
 # ------------------------------------------------------------------ registrazioni delle esibizioni

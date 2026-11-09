@@ -17,6 +17,9 @@ function subscribe(l: () => void) {
   return () => listeners.delete(l);
 }
 
+/** URL della foto di un partecipante ("" se non ne ha una), fuori dai componenti. */
+export const avatarUrlOf = (name: string): string => map[avatarKey(name)] ?? "";
+
 export function useAvatarUrl(name: string | undefined | null): string | undefined {
   const m = useSyncExternalStore(subscribe, () => map);
   return name ? m[avatarKey(name)] : undefined;

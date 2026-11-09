@@ -17,6 +17,7 @@ import { Splash, useSplash } from "../shared/Splash";
 import { CompetitionSwitch, RankingCorner, RankingDialog, WinnerScreen } from "./Competition";
 import { Participants } from "./Participants";
 import { VoteBanner } from "./VoteBanner";
+import { EveningStatsPanel, StatsButton } from "./EveningStats";
 import { SettingsButton } from "./Settings";
 import { LibraryView, SearchView } from "./Views";
 
@@ -33,6 +34,7 @@ export function App() {
     else if (event === "show_qr") showQr(data?.seconds ?? 10);
     else if (event === "show_wifi") showWifi(data?.seconds ?? 10);
     else if (event === "show_ranking") showRanking(data?.seconds ?? 10);
+    else if (event === "show_stats") setStatsOpen(true);
     else if (event === "fullscreen") enterFullscreen();
     else if (event === "users") setUsers(Array.isArray(data) ? data : []);
     else if (event === "user_joined" && data?.name) requests.pushJoin(data.name);
@@ -95,6 +97,8 @@ export function App() {
     if (connected) api.users().then((r) => setUsers(r.users)).catch(() => {});
   }, [connected]);
   const [rankingOpen, setRankingOpen] = useState(false);
+  const [statsOpen, setStatsOpen] = useState(false); // riepilogo della serata
+  const closeStats = useCallback(() => setStatsOpen(false), []);
 
   useEffect(() => {
     api.info().then(setInfo).catch(() => {});
@@ -192,6 +196,7 @@ export function App() {
           <ModeSeg onError={setToast} />
           <DjPicker users={users} onError={setToast} />
           <CompetitionSwitch onShowRanking={() => setRankingOpen(true)} />
+          {!jukebox && <StatsButton onClick={() => setStatsOpen(true)} />}
         </div>
 
         {/* QR code piccolo per entrare e, sotto, chi è collegato dal telefono in questo momento;
@@ -380,6 +385,7 @@ export function App() {
       {rankingShown !== null && <RankingCorner seconds={rankingShown} onClose={() => setRankingShown(null)} />}
       {winner && !nowSong && <WinnerScreen standings={winner} onClose={() => setWinner(null)} />}
       {rankingOpen && <RankingDialog onClose={() => setRankingOpen(false)} />}
+      {statsOpen && <EveningStatsPanel onClose={closeStats} />}
       {qrShown && info && (
         // stessa card (e misura) del QR del Wi-Fi
         <div className="wifi-corner qr-corner" title="Clic per chiudere" onClick={() => setQrShown(false)}>

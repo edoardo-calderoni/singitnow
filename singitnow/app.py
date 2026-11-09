@@ -16,7 +16,7 @@ from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import __version__, admin, audio, avatars, competition, config, halloffame, mics, mode, names, party, people, wifi, youtube
+from . import __version__, admin, audio, avatars, competition, config, halloffame, mics, mode, names, party, people, stats, wifi, youtube
 from .events import hub
 from .library import READY, library
 from .pipeline import pipeline
@@ -791,6 +791,7 @@ def applause(req: ApplauseReq):
         return {"ok": False}
     recent.append(now)
     _applause_log[name] = recent
+    stats.applause(playlist.now_playing.id)
     hub.publish("applause", {"name": name})
     return {"ok": True}
 
@@ -870,7 +871,10 @@ def _rename_scores(old: str, new: str) -> None:
 
 
 # quando arriva un omonimo, chi era già nella festa cambia nome ovunque («Marco» -> «Marco R.»)
-for _cb in (playlist.rename, competition.rename, avatars.rename, mode.rename_dj, admin.rename, hub.rename, _rename_scores):
+for _cb in (
+    playlist.rename, competition.rename, avatars.rename, mode.rename_dj, admin.rename, hub.rename, _rename_scores,
+    stats.rename,
+):
     people.on_rename(_cb)
 
 
@@ -898,6 +902,8 @@ def add_score(req: ScoreReq):
     if entry["singer"]:  # senza nome il voto si vede sulla TV ma non entra in classifica
         _scores.append(entry)
         party.changed()
+        if req.entry_id:
+            stats.score(req.entry_id, entry["singer"], entry["score"])
         ranking = _ranking()
         hub.publish("scores", {"ranking": ranking})
         comp_pos = competition.add_score(
@@ -941,6 +947,28 @@ def audience_vote(req: VoteReq):
     if why:
         raise HTTPException(409, why)
     return competition.public()
+
+
+# ------------------------------------------------------------------ statistiche della serata
+@app.get("/api/stats")
+def evening_stats():
+    """Riepilogo della serata: più applaudito, miglior intonazione, duetto migliore, chi ha cantato di più."""
+    return stats.summary()
+
+
+@app.get("/api/stats/qr")
+def evening_stats_qr():
+    """QR code (SVG) che apre il riepilogo sul telefono, da salvare come immagine."""
+    url = f"http://{config.lan_ip()}:{config.PORT}/remote?stats=1"
+    return {"url": url, "qr_svg": segno.make(url, error="m").svg_inline(
+        scale=6, dark="#0b0b14", light="#ffffff", border=2, omitsize=True)}
+
+
+@app.post("/api/admin/stats/show", dependencies=[Depends(admin.require_control)])
+def show_stats():
+    """Mostra il riepilogo della serata sulla TV (dal telefono di un amministratore)."""
+    hub.publish("show_stats", {})
+    return {"ok": True}
 
 
 # ------------------------------------------------------------------ competizione

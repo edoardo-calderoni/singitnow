@@ -8,7 +8,7 @@ import time
 import uuid
 from dataclasses import asdict, dataclass, field
 
-from . import competition, config, mode
+from . import competition, config, mode, stats
 from .events import hub
 from .library import READY, Song, library
 
@@ -98,7 +98,9 @@ class Playlist:
         if e is None or e.id == self._marked:
             return
         self._marked = e.id
-        library.update(e.song_id, played_at=time.time())
+        song = library.update(e.song_id, played_at=time.time())
+        if song and not mode.is_jukebox():  # in Jukebox e DJ non si canta: niente esibizione
+            stats.started(e.id, e.song_id, song.title, song.artist, e.singer, e.partner)
 
     # -------------------------------------------------------------- lettura
     def snapshot(self) -> dict:

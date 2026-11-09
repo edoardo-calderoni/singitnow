@@ -3102,3 +3102,89 @@ body {
   font-size: 0.85em;
   white-space: nowrap;
 }
+
+/* Statistiche della serata */
+.stats-btn {
+  align-self: flex-start;
+  margin-top: 6px;
+}
+.modal.stats-modal {
+  width: min(920px, 100%);
+  gap: 18px;
+}
+.stats-modal h3 {
+  font-size: 30px;
+}
+.stats-totals {
+  color: var(--text-2);
+  font-size: 16px;
+}
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 14px;
+}
+.stats-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 18px 14px;
+  border-radius: 18px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  text-align: center;
+}
+.stats-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-2);
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.stats-people {
+  display: flex;
+  justify-content: center;
+}
+.stats-people .avatar + .avatar {
+  margin-left: -14px;
+}
+.stats-names {
+  max-width: 100%;
+  font-family: var(--font-display);
+  font-size: 19px;
+  font-weight: 700;
+}
+.stats-main {
+  color: #fbbf24;
+  font-size: 22px;
+  font-weight: 800;
+}
+.stats-detail {
+  max-width: 100%;
+  color: var(--text-2);
+  font-size: 14px;
+}
+.stats-qr {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  color: var(--text-2);
+  font-size: 15px;
+}
+.stats-qr-img {
+  flex: none;
+  width: 110px;
+  height: 110px;
+  border-radius: 12px;
+  overflow: hidden;
+}
+.stats-qr-img svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}

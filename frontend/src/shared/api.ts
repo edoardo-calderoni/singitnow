@@ -307,6 +307,9 @@ export const api = {
   next: () => req<PlaylistState>("POST", "/api/player/next"),
   showQr: () => req("POST", "/api/admin/qr"),
   competition: () => req<Competition>("GET", "/api/competition"),
+  stats: () => req<import("./stats").EveningStats>("GET", "/api/stats"),
+  statsQr: () => req<{ url: string; qr_svg: string }>("GET", "/api/stats/qr"),
+  showStats: () => req("POST", "/api/admin/stats/show"),
   vote: (entry_id: string, voter: string, stars: number) =>
     req<Competition>("POST", "/api/vote", { entry_id, voter, stars }),
   setCompetition: (enabled: boolean, name = "") => req<Competition>("POST", "/api/admin/competition", { enabled, name }),

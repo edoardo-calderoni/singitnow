@@ -58,6 +58,7 @@ import { Preparing } from "./Preparing";
 import { AdminPasswordCard, PlaylistSettingsCard, ScreenCard } from "./SettingsCards";
 import { DjElected, Turntable } from "./DjElected";
 import { AudienceVote } from "./AudienceVote";
+import { EveningStatsEntry, EveningStatsSheet, openedFromQr } from "./EveningStats";
 import { PasswordInput } from "../shared/PasswordInput";
 import { useReorder } from "./useReorder";
 import { DuetControls, DuetInvite, DuetNotice, useDuetNotice } from "./Duet";
@@ -97,6 +98,12 @@ export function App() {
   }, [name]);
   const nameRef = useRef(name);
   nameRef.current = name;
+  // arrivati dal QR code delle statistiche sulla TV: il riepilogo si apre subito
+  const [statsFromQr, setStatsFromQr] = useState(openedFromQr);
+  const closeStatsFromQr = () => {
+    setStatsFromQr(false);
+    history.replaceState(null, "", location.pathname); // ricaricando la pagina non si riapre
+  };
   const [ranking, setRanking] = useState<ScoreEntry[]>([]);
   const added = useAddedNotice(name); // «X ha aggiunto …» quando qualcun altro aggiunge un brano
   const duet = useDuetNotice(name); // risposte alle proposte di duetto
@@ -250,6 +257,7 @@ export function App() {
             saveProfile(f, l, ph ?? undefined);
           }}
         />
+        {statsFromQr && <EveningStatsSheet onClose={closeStatsFromQr} />}
         <ConnectionLost connected={connected} />
       </>
     );
@@ -425,6 +433,7 @@ export function App() {
       {!jukebox && <DuetInvite name={name} playlist={playlist} player={player} safe={safe} />}
       <DjElected iAmDj={iAmDj} electedAt={djAt} />
       <AudienceVote name={name} />
+      {statsFromQr && <EveningStatsSheet onClose={closeStatsFromQr} />}
       <ConnectionLost connected={connected} />
     </div>
   );
@@ -849,6 +858,7 @@ function QueueTab({
         </ol>
       )}
       {!jukebox && <Ranking ranking={ranking} name={name} />}
+      {!jukebox && <EveningStatsEntry />}
     </div>
   );
 }

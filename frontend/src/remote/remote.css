@@ -1949,3 +1949,69 @@ body {
 .m-vote-note.err {
   color: var(--red);
 }
+
+/* Statistiche della serata */
+.m-stats-btn {
+  margin-top: 14px;
+}
+.m-stats-card {
+  align-items: stretch;
+  gap: 12px;
+  max-height: calc(100dvh - 32px);
+  overflow-y: auto;
+}
+.m-stats-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.m-stats-head .m-sheet-title {
+  font-size: 24px;
+}
+.m-stats-totals {
+  color: var(--text-2);
+  font-size: 13px;
+}
+.m-stats-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.05);
+}
+.m-stats-people {
+  display: flex;
+  flex: none;
+}
+.m-stats-people .avatar {
+  width: 44px;
+  height: 44px;
+}
+.m-stats-people .avatar + .avatar {
+  margin-left: -12px;
+}
+.m-stats-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.m-stats-label {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  color: var(--text-2);
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+.m-stats-sub {
+  color: var(--text-2);
+  font-size: 13px;
+}
+.m-stats-sub span {
+  color: #fbbf24;
+  font-weight: 700;
+}

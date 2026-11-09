@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { Clock, Headphones, Mic, Mic2, MicOff, Minus, Music, Pause, Play, Plus, RotateCcw, SkipForward, Sparkles, Square, Trophy, Users, Volume2, VolumeX, Wand2 } from "lucide-react";
+import { BarChart3, Clock, Headphones, Mic, Mic2, MicOff, Minus, Music, Pause, Play, Plus, RotateCcw, SkipForward, Sparkles, Square, Trophy, Users, Volume2, VolumeX, Wand2 } from "lucide-react";
 import { api, LyricLine, PlaylistState } from "../shared/api";
 import { LivePlayer, playerTime } from "../shared/live";
 import { Mode, useDj, useJukebox, useMode } from "../shared/mode";
@@ -381,6 +381,18 @@ export function CompetitionCard({ inline }: { inline?: boolean }) {
           <Trophy size={15} /> Mostra la classifica sulla TV
         </button>
       )}
+      <button
+        type="button"
+        className="btn btn-ghost btn-sm m-wifi-show"
+        onClick={() =>
+          api
+            .showStats()
+            .then(() => setMsg("Statistiche della serata sulla TV"))
+            .catch((e) => setMsg(e.message))
+        }
+      >
+        <BarChart3 size={15} /> Mostra le statistiche sulla TV
+      </button>
       {msg && <div className="m-admin-msg">{msg}</div>}
     </div>
   );

@@ -667,6 +667,46 @@ body {
   }
 }
 
+/* ---------- «Adatta la tua tonalità» */
+.m-keyfit {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 12px 12px 12px 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(56, 189, 248, 0.4);
+  background: rgba(56, 189, 248, 0.1);
+}
+.m-keyfit.on {
+  border-color: rgba(52, 211, 153, 0.45);
+  background: rgba(52, 211, 153, 0.1);
+}
+.m-keyfit-icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.08);
+}
+.m-keyfit-body {
+  flex: 1;
+  min-width: 0;
+}
+.m-keyfit-title {
+  font-weight: 700;
+  font-size: 14px;
+}
+.m-keyfit-sub {
+  font-size: 12.5px;
+  color: var(--text-2);
+}
+.m-keyfit .btn {
+  flex: none;
+  white-space: nowrap;
+}
+
 .m-vib {
   padding: 10px 14px;
   border-radius: 12px;

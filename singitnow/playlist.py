@@ -8,7 +8,7 @@ import time
 import uuid
 from dataclasses import asdict, dataclass, field
 
-from . import competition, config, mode, stats
+from . import competition, config, keyfit, mode, people, stats
 from .events import hub
 from .library import READY, Song, library
 
@@ -21,6 +21,7 @@ class Entry:
     added_at: float = field(default_factory=time.time)
     auto: bool = False  # avviata automaticamente (playlist ferma): la TV passa a schermo intero
     partner: str = ""  # duetto: chi canta insieme a `singer` (ha accettato la proposta)
+    key: int | None = None  # tonalità scelta da chi canta (None = non scelta: originale o automatica)
 
 
 class Playlist:
@@ -109,7 +110,8 @@ class Playlist:
                 if e is None:
                     return None
                 s = library.get(e.song_id)
-                return asdict(e) | {"song": s.to_public() if s else None}
+                suggested, play = self._keys(e)
+                return asdict(e) | {"song": s.to_public() if s else None, "suggested_key": suggested, "play_key": play}
 
             waiting = []
             for sid, singers in self._waiting.items():
@@ -236,6 +238,38 @@ class Playlist:
     def request_owner(self, request_id: str) -> str | None:
         with self._lock:
             return next((r["singer"] for r in self._requests if r["id"] == request_id), None)
+
+    # -------------------------------------------------------------- tonalità di chi canta
+    def _keys(self, e: Entry) -> tuple[int | None, int]:
+        """(tonalità consigliata a chi canta, tonalità in cui partirà il brano).
+        Solo in Karaoke e da soli: in duetto le voci sono due."""
+        if mode.is_jukebox() or e.partner or not e.singer.strip():
+            return None, 0
+        first, last = people.full_of(e.singer) or (e.singer, "")
+        suggested = keyfit.suggest(e.song_id, first, last)
+        play = e.key if e.key is not None else (suggested or 0) if mode.auto_key() else 0
+        if play:
+            keyfit.prepare(e.song_id, play)  # così il brano parte subito nella tonalità giusta
+        return suggested, play
+
+    def set_key(self, entry_id: str, name: str, key: int | None) -> tuple[str, int | None]:
+        """Chi canta sceglie la tonalità del suo brano (key=None: quella consigliata).
+        Restituisce (errore o "", tonalità se il brano sta già suonando)."""
+        name = name.strip().casefold()
+        with self._lock:
+            e = self._entry(entry_id) or (self.now_playing if self.now_playing and self.now_playing.id == entry_id else None)
+            if e is None:
+                return "Il brano non è più in coda", None
+            if e.singer.strip().casefold() != name:
+                return "Puoi cambiare la tonalità solo dei tuoi brani", None
+            suggested, _ = self._keys(e)
+            if key is None:
+                if not suggested:
+                    return "Non conosco ancora abbastanza bene la tua voce", None
+                key = suggested
+            e.key = max(-keyfit.audio.KEY_RANGE, min(keyfit.audio.KEY_RANGE, int(key)))
+            self._changed()
+            return "", e.key if e is self.now_playing else None
 
     # -------------------------------------------------------------- duetti
     def _entry(self, entry_id: str) -> Entry | None:

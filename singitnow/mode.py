@@ -103,8 +103,14 @@ def record() -> bool:
     return bool(_read().get("record", True))
 
 
+def auto_key() -> bool:
+    """Settaggio «Adatta la tonalità automaticamente»: in Karaoke ogni brano parte nella tonalità
+    consigliata a chi lo canta (se il sistema conosce la sua voce). Spento di default."""
+    return bool(_read().get("auto_key", False))
+
+
 def settings_public() -> dict:
-    return {"autoplay": autoplay(), "locked": locked(), "record": record()}
+    return {"autoplay": autoplay(), "locked": locked(), "record": record(), "auto_key": auto_key()}
 
 
 def _set(key: str, value) -> dict:
@@ -127,6 +133,10 @@ def set_locked(enabled: bool) -> dict:
 
 def set_record(enabled: bool) -> dict:
     return _set("record", bool(enabled))
+
+
+def set_auto_key(enabled: bool) -> dict:
+    return _set("auto_key", bool(enabled))
 
 
 def rename_dj(old: str, new: str) -> None:

@@ -11,11 +11,13 @@
  *    scambiano (quelli del nuovo entrano, quelli del vecchio escono) e il vecchio sfuma a zero.
  * 4. Finito il mix il nuovo brano torna piano piano alla sua velocità originale.
  *
- * In ogni caso i lunghi silenzi all'inizio del brano nuovo e alla fine di quello vecchio si saltano.
+ * In ogni caso i lunghi silenzi all'inizio del brano nuovo e alla fine di quello vecchio si saltano,
+ * e anche le introduzioni strumentali lunghe: il mix finisce poco prima che parta la voce.
  * Se il ritmo di uno dei due non è regolare (o manca la griglia, o i BPM sono troppo diversi) si fa
  * una dissolvenza incrociata di MIX_SECONDS senza toccare la velocità.
  */
 import type { Envelope, KaraokeEngine } from "../shared/engine";
+import type { LyricLine } from "../shared/api";
 
 export interface Grid {
   first: number;
@@ -62,7 +64,54 @@ function musicStart(b: Beats | null): number {
   return Math.max(0, (b?.start ?? 0) - 0.05);
 }
 
-export function planMix(outBeats: Beats | null, outDuration: number, inBeats: Beats | null): MixPlan {
+// ------------------------------------------------------------------ introduzioni lunghe
+const INTRO_MIN = 15; // s di sola musica prima del canto: sotto, l'introduzione resta
+const INTRO_LEAD = 5; // s di musica che si lasciano prima della voce
+const MIX_GAP = 1; // s fra la fine del mix e la voce
+
+/**
+ * Jukebox e DJ: istante in cui parte la voce, se prima c'è un'introduzione strumentale lunga
+ * (da saltare); null se l'introduzione è breve o il testo manca.
+ */
+export function longIntro(lines: LyricLine[] | null | undefined, beats: Beats | null): number | null {
+  const first = lines?.find((l) => l.text.trim())?.start;
+  if (first == null || !isFinite(first)) return null;
+  return first - musicStart(beats) >= INTRO_MIN ? first : null;
+}
+
+/** Ultimo primo tempo di battuta della griglia non oltre `limit` (null se la griglia non va bene). */
+function downbeatBefore(g: Grid | null | undefined, limit: number): number | null {
+  if (!g?.steady || !(g.period > 0)) return null;
+  const n = Math.floor((limit - g.first) / g.period);
+  const d = n - ((((n - g.downbeat) % 4) + 4) % 4);
+  if (d < 0) return null;
+  return g.first + d * g.period;
+}
+
+/** Da dove far partire (senza mix) un brano con l'introduzione lunga: su una battuta, poco prima della voce. */
+export function introStart(voice: number, beats: Beats | null): number {
+  const limit = voice - INTRO_LEAD;
+  const t = downbeatBefore(beats?.intro, limit);
+  return Math.max(musicStart(beats), t != null && t > limit - 4 ? t : limit);
+}
+
+/** Posizione d'ingresso del brano nuovo in un mix lungo `advance` secondi del brano nuovo. */
+function mixEntry(normal: number, voice: number | null | undefined, advance: number, grid?: Grid | null): number {
+  if (voice == null) return normal;
+  const limit = voice - MIX_GAP - advance;
+  if (limit <= normal) return normal;
+  if (grid) {
+    const t = downbeatBefore(grid, limit);
+    return t != null && t > normal ? t : normal;
+  }
+  return limit;
+}
+
+/**
+ * Piano del mix. inVoice: dove parte la voce del brano nuovo se ha un'introduzione lunga
+ * (vedi longIntro): il brano nuovo entra più avanti, così la voce arriva appena finito il mix.
+ */
+export function planMix(outBeats: Beats | null, outDuration: number, inBeats: Beats | null, inVoice: number | null = null): MixPlan {
   const o = outBeats?.outro;
   const i = inBeats?.intro;
   if (o?.steady && i?.steady && o.count > MIX_BEATS + 4) {
@@ -83,11 +132,12 @@ export function planMix(outBeats: Beats | null, outDuration: number, inBeats: Be
       while (i.first + d * i.period < Math.max(0, heard - 0.1)) d += 4;
       const outStart = o.first + s * o.period;
       if (s >= 0 && outStart > 0 && outStart + MIX_BEATS * o.period <= Math.min(outDuration, musicEnd(outBeats, outDuration) + o.period)) {
+        const length = MIX_BEATS * o.period;
         return {
           synced: true,
           outStart,
-          inStart: i.first + d * i.period,
-          length: MIX_BEATS * o.period,
+          inStart: mixEntry(i.first + d * i.period, inVoice, length * best.rate, i),
+          length,
           rate: best.rate,
           beat: o.period,
         };
@@ -95,7 +145,19 @@ export function planMix(outBeats: Beats | null, outDuration: number, inBeats: Be
     }
   }
   const end = musicEnd(outBeats, outDuration);
-  return { synced: false, outStart: Math.max(0, end - MIX_SECONDS), inStart: musicStart(inBeats), length: MIX_SECONDS, rate: 1, beat: 0.5 };
+  return {
+    synced: false,
+    outStart: Math.max(0, end - MIX_SECONDS),
+    inStart: lateEntry(inBeats, inVoice, MIX_SECONDS),
+    length: MIX_SECONDS,
+    rate: 1,
+    beat: 0.5,
+  };
+}
+
+/** Ingresso del brano nuovo in una dissolvenza semplice lunga `length` secondi. */
+export function lateEntry(inBeats: Beats | null, inVoice: number | null, length: number): number {
+  return mixEntry(musicStart(inBeats), inVoice, length);
 }
 
 export interface MixSide {
@@ -163,6 +225,8 @@ export interface CuedPlayer {
   engine: KaraokeEngine;
   beats: Beats | null;
   volume: () => number;
+  /** inizio della voce se l'introduzione è lunga (vedi longIntro) */
+  voice: number | null;
 }
 const cued = new Map<string, CuedPlayer>();
 const listeners = new Set<() => void>();

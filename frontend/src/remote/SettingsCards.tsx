@@ -11,7 +11,7 @@ import { useSettings } from "../shared/settings";
 export function PlaylistSettingsCard() {
   const settings = useSettings(); // aggiornati in tempo reale anche se li cambia il PC
   const [error, setError] = useState("");
-  const set = (change: { autoplay?: boolean; locked?: boolean }) =>
+  const set = (change: { autoplay?: boolean; locked?: boolean; auto_key?: boolean }) =>
     api
       .setSettings(change)
       .then(() => setError(""))
@@ -30,6 +30,12 @@ export function PlaylistSettingsCard() {
         desc="Nessuno può aggiungere o chiedere brani, neanche il DJ: solo gli amministratori e il PC gestiscono la playlist."
         value={settings?.locked ?? null}
         onChange={(v) => set({ locked: v })}
+      />
+      <SwitchRow
+        label="Adatta la tonalità automaticamente"
+        desc="In Karaoke ogni brano parte nella tonalità più comoda per chi lo canta, se SingITnow conosce già la sua voce."
+        value={settings?.auto_key ?? null}
+        onChange={(v) => set({ auto_key: v })}
       />
       {error && <div className="m-admin-err">{error}</div>}
     </div>

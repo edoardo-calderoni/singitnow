@@ -77,6 +77,7 @@ import {
   GetReadyAlert,
   LyricsTab,
   TurnBanner,
+  MyKeyCard,
   turnFor,
   useTick,
   AdminControls,
@@ -704,6 +705,7 @@ function QueueTab({
     <div className="m-section">
       {/* il DJ aggiunge tutti i brani: niente «Il tuo brano è il prossimo» */}
       {!iAmDj && <TurnBanner turn={turnFor(name, playlist, player)} onAdd={goLibrary} onLyrics={goLyrics} />}
+      {!iAmDj && <MyKeyCard name={name} playlist={playlist} />}
       {!jukebox && turnFor(name, playlist, player) && <EnableVibration />}
       {now?.song && (
         <div className={`m-now ${now.song.cover_url ? "has-cover" : ""}`}>

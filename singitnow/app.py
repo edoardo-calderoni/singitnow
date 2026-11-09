@@ -19,7 +19,7 @@ from pydantic import BaseModel
 
 from . import (
     __version__, admin, audio, avatars, backup, competition, config, halloffame, mics, mode, names, party, people,
-    profiles,
+    keyfit, profiles,
     recordings, stats, storage, wifi, youtube,
 )
 from .events import hub
@@ -774,6 +774,7 @@ class SettingsReq(BaseModel):
     autoplay: bool | None = None
     locked: bool | None = None
     record: bool | None = None
+    auto_key: bool | None = None
 
 
 @app.get("/api/settings")
@@ -790,7 +791,52 @@ def set_settings(req: SettingsReq):
         mode.set_locked(req.locked)
     if req.record is not None:
         mode.set_record(req.record)
+    if req.auto_key is not None:
+        mode.set_auto_key(req.auto_key)
+        hub.publish("playlist", playlist.snapshot())  # cambia la tonalità in cui partiranno i brani
     return mode.settings_public()
+
+
+# ------------------------------------------------------------------ tonalità consigliata
+class VoiceRangeReq(BaseModel):
+    singer: str
+    song_id: str = ""
+    lo: float
+    mid: float
+    hi: float
+    seconds: float
+
+
+@app.post("/api/voice-range", dependencies=[Depends(admin.require_control)])
+def voice_range(req: VoiceRangeReq):
+    """Il player manda a fine brano l'estensione della voce di chi ha cantato (da solo)."""
+    singer = req.singer.strip()[:40]
+    if not singer:
+        return {"ok": False}
+    first, last = people.full_of(singer) or (singer, "")
+    ok = keyfit.add(first, last, req.lo, req.mid, req.hi, req.seconds, req.song_id)
+    if ok:
+        hub.publish("playlist", playlist.snapshot())  # i telefoni vedono subito la tonalità consigliata
+    return {"ok": ok}
+
+
+class MyKeyReq(BaseModel):
+    entry_id: str
+    name: str
+    key: int | None = None  # None = quella consigliata, 0 = originale
+
+
+@app.post("/api/my-key")
+def my_key(req: MyKeyReq):
+    """«Adatta la tua tonalità»: chi canta porta il suo brano nella tonalità consigliata (o all'originale)."""
+    if mode.is_jukebox():
+        raise HTTPException(409, "In Jukebox e DJ si ascolta la tonalità originale")
+    error, now = playlist.set_key(req.entry_id, req.name, req.key)
+    if error:
+        raise HTTPException(409, error)
+    if now is not None:  # il brano sta già suonando: la TV cambia tonalità subito
+        hub.publish("player_command", {"action": "key", "value": now, "singer": req.name})
+    return playlist.snapshot()
 
 
 class PasswordReq(BaseModel):

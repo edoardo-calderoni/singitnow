@@ -47,6 +47,12 @@ export interface Entry {
   auto?: boolean;
   /** duetto: chi canta insieme a `singer` (ha accettato la proposta) */
   partner?: string;
+  /** tonalità scelta da chi canta (null = non scelta) */
+  key?: number | null;
+  /** tonalità consigliata a chi canta (null = la sua voce non è ancora nota; 0 = va bene l'originale) */
+  suggested_key?: number | null;
+  /** tonalità in cui partirà il brano (scelta, oppure consigliata se l'adattamento è automatico) */
+  play_key?: number;
   song: Song | null;
 }
 
@@ -387,13 +393,19 @@ export const api = {
   saveWifi: (w: Wifi) => req<{ wifi: Wifi | null }>("PUT", "/api/admin/wifi", w),
   showWifi: () => req("POST", "/api/admin/wifi/show"),
   wifiQr: () => req<{ ssid: string; security: Wifi["security"]; qr_svg: string }>("GET", "/api/wifi/qr"),
-  settings: () => req<{ autoplay: boolean; locked: boolean; record: boolean }>("GET", "/api/settings"),
+  settings: () => req<{ autoplay: boolean; locked: boolean; record: boolean; auto_key: boolean }>("GET", "/api/settings"),
   changeAdminPassword: (old: string, next: string) => req<{ ok: boolean }>("POST", "/api/admin/password", { old, new: next }),
-  setSettings: (change: { autoplay?: boolean; locked?: boolean; record?: boolean }) =>
-    req<{ autoplay: boolean; locked: boolean; record: boolean }>("POST", "/api/admin/settings", change),
+  setSettings: (change: { autoplay?: boolean; locked?: boolean; record?: boolean; auto_key?: boolean }) =>
+    req<{ autoplay: boolean; locked: boolean; record: boolean; auto_key: boolean }>("POST", "/api/admin/settings", change),
   setMode: (mode: "karaoke" | "jukebox" | "dj") => req<{ mode: string; dj: string }>("POST", "/api/admin/mode", { mode }),
   setDj: (name: string) => req<{ mode: string; dj: string }>("POST", "/api/admin/dj", { name }),
   command: (action: string, value?: number, singer = "") => req("POST", "/api/player/command", { action, value, singer }),
+  /** a fine brano: estensione della voce di chi ha cantato da solo (per la tonalità consigliata) */
+  voiceRange: (r: { singer: string; song_id: string; lo: number; mid: number; hi: number; seconds: number }) =>
+    req<{ ok: boolean }>("POST", "/api/voice-range", r),
+  /** «Adatta la tua tonalità»: key undefined = quella consigliata, 0 = originale */
+  myKey: (entry_id: string, name: string, key?: number) =>
+    req<PlaylistState>("POST", "/api/my-key", { entry_id, name, key: key ?? null }),
   playerState: (state: PlayerState) => req("POST", "/api/player/state", state),
 };
 

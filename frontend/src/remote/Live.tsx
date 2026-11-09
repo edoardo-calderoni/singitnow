@@ -125,6 +125,62 @@ export function TurnBanner({ turn, onAdd, onLyrics }: { turn: Turn | null; onAdd
   );
 }
 
+// ------------------------------------------------------------------ tonalità consigliata
+const keyText = (k: number) => `${Math.abs(k)} semiton${Math.abs(k) === 1 ? "o" : "i"} più ${k < 0 ? "bassa" : "alta"}`;
+
+/**
+ * «Adatta la tua tonalità»: quando SingITnow conosce la voce di chi canta (l'ha sentita in brani
+ * precedenti) e per il suo prossimo brano (o quello che sta cantando) una tonalità diversa è più
+ * comoda, un tocco la applica; un altro torna all'originale.
+ */
+export function MyKeyCard({ name, playlist }: { name: string; playlist: PlaylistState }) {
+  const jukebox = useJukebox();
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const me = name.trim().toLowerCase();
+  const mine = [playlist.now_playing, ...playlist.entries].find(
+    (e) => !!e && !e.partner && e.singer.trim().toLowerCase() === me,
+  );
+  const suggested = mine?.suggested_key ?? 0;
+  if (jukebox || !mine || !suggested) return null;
+  const adapted = (mine.play_key ?? 0) === suggested;
+  const playing = mine.id === playlist.now_playing?.id;
+  const set = (key?: number) => {
+    setBusy(true);
+    setError("");
+    api
+      .myKey(mine.id, name, key)
+      .catch((e) => setError(e.message))
+      .finally(() => setBusy(false));
+  };
+  return (
+    <div className={`m-keyfit ${adapted ? "on" : ""}`}>
+      <div className="m-keyfit-icon">
+        <Music size={20} />
+      </div>
+      <div className="m-keyfit-body">
+        <div className="m-keyfit-title">
+          {adapted ? "Tonalità adattata alla tua voce" : "C'è una tonalità più comoda per te"}
+        </div>
+        <div className="m-keyfit-sub">
+          {mine.song?.title ? `«${mine.song.title}» ` : ""}
+          {adapted ? `${playing ? "suona" : "partirà"} ${keyText(suggested)} dell'originale` : `ti verrebbe meglio ${keyText(suggested)}`}
+        </div>
+        {error && <div className="m-vol-err">{error}</div>}
+      </div>
+      {adapted ? (
+        <button type="button" className="btn btn-ghost btn-sm" disabled={busy} onClick={() => set(0)}>
+          Originale
+        </button>
+      ) : (
+        <button type="button" className="btn btn-primary btn-sm" disabled={busy} onClick={() => set()}>
+          Adatta la tua tonalità
+        </button>
+      )}
+    </div>
+  );
+}
+
 // ------------------------------------------------------------------ testo in tempo reale
 export function LyricsTab({
   name,

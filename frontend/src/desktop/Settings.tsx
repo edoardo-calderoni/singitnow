@@ -19,7 +19,7 @@ export function SettingsButton({ onError }: { onError: (m: string) => void }) {
   );
 }
 
-type Key = "autoplay" | "locked" | "record";
+type Key = "autoplay" | "locked" | "record" | "auto_key";
 
 function SettingsDialog({ onClose, onError }: { onClose: () => void; onError: (m: string) => void }) {
   const [values, setValues] = useState<Record<Key, boolean> | null>(null);
@@ -72,6 +72,12 @@ function SettingsDialog({ onClose, onError }: { onClose: () => void; onError: (m
           desc="Voce dei microfoni e base: chi canta la scarica dal suo telefono (Profilo). Sulla TV si vede «REC» mentre registra; si cancellano dopo 60 giorni."
           value={values?.record ?? null}
           onChange={(v) => toggle("record", v)}
+        />
+        <SwitchSetting
+          label="Adatta la tonalità automaticamente"
+          desc="In Karaoke ogni brano parte nella tonalità più comoda per chi lo canta, se SingITnow conosce già la sua voce (la impara mentre canta). Chi canta può tornare all'originale dal telefono."
+          value={values?.auto_key ?? null}
+          onChange={(v) => toggle("auto_key", v)}
         />
         <StorageSetting onError={onError} />
         <BackupSetting onError={onError} />

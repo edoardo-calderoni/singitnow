@@ -20,7 +20,7 @@ import {
 } from "lucide-react";
 import { api, Entry, fmtTime, LyricLine, Song } from "../shared/api";
 import { KaraokeEngine } from "../shared/engine";
-import { Beats, getCued, MIX_SECONDS, onCuedChange, planMix, PRELOAD_SECONDS, runMix, setCued } from "./mix";
+import { Beats, getCued, introStart, lateEntry, longIntro, MIX_SECONDS, onCuedChange, planMix, PRELOAD_SECONDS, runMix, setCued } from "./mix";
 import { LyricsView } from "./LyricsView";
 import { Avatar } from "../shared/Avatar";
 import { fmtClock, prepRemaining, singersOf, useTick } from "../shared/queue";
@@ -218,6 +218,19 @@ export function Player({ entry, next, waitingNext, onClose, onNext, mini = false
   const onGoneRef = useRef(onGone);
   onGoneRef.current = onGone;
   const beatsRef = useRef<Beats | null>(null);
+  const linesRef = useRef<LyricLine[] | null>(null);
+  /**
+   * Jukebox e DJ: l'introduzione strumentale lunga si salta, si parte poco prima della voce
+   * (con una breve dissolvenza). In Karaoke no: l'introduzione serve a chi canta per prepararsi.
+   */
+  const skipIntro = (e: KaraokeEngine) => {
+    if (!jukeboxRef.current) return;
+    const voice = longIntro(linesRef.current, beatsRef.current);
+    if (voice == null) return;
+    e.seek(introStart(voice, beatsRef.current));
+    e.fadeMaster(0, 0);
+    e.fadeMaster(volumeRef.current, 1.5);
+  };
   const song = entry.song!;
   const videoRef = useRef<HTMLVideoElement>(null);
   const engineRef = useRef<KaraokeEngine | null>(null);
@@ -250,11 +263,13 @@ export function Player({ entry, next, waitingNext, onClose, onNext, mini = false
   const [controls, setControls] = useState(false);
 
   // ------------------------------------------------------------ tonalità della base
-  // ogni brano parte nella tonalità originale; − e + la spostano di un semitono alla volta
-  const [key, setKey] = useState(0);
+  // ogni brano parte nella tonalità originale, oppure in quella scelta da chi canta («Adatta la tua
+  // tonalità» dal telefono, o automatica dai Settaggi); − e + la spostano di un semitono alla volta
+  const [startKey] = useState(() => (jukebox ? 0 : Math.max(-KEY_RANGE, Math.min(KEY_RANGE, Math.round(entry.play_key ?? 0)))));
+  const [key, setKey] = useState(startKey);
   const [keyBusy, setKeyBusy] = useState(false);
   const [keyError, setKeyError] = useState("");
-  const appliedKey = useRef(0); // tonalità che sta suonando davvero (anche per le barre dell'intonazione)
+  const appliedKey = useRef(startKey); // tonalità che sta suonando davvero (anche per le barre dell'intonazione)
   const changeKey = useCallback((k: number) => {
     setKey(Math.max(-KEY_RANGE, Math.min(KEY_RANGE, Math.round(k))));
   }, []);
@@ -368,6 +383,56 @@ export function Player({ entry, next, waitingNext, onClose, onNext, mini = false
   };
   const resultsRef = useRef(finalResults);
   resultsRef.current = finalResults;
+
+  // ------------------------------------------------------------ estensione della voce
+  // Karaoke, da soli: si misurano le note cantate davvero (anche senza Competizione) e a fine brano
+  // si mandano al PC, che impara la voce di chi canta per consigliargli la tonalità più comoda.
+  const rangeOn = !jukebox && !cued && !outgoing && !!entry.singer && !partner && !!notes?.length && hasMicInput;
+  const rangeSamples = useRef<number[]>([]);
+  const rangeSent = useRef(false);
+  useEffect(() => {
+    // con la Competizione le note cantate le raccoglie già la PitchBar (scoreRef)
+    if (!rangeOn || pitchActive || !notes) return;
+    let alive = true;
+    let raf = 0;
+    let tick = 0;
+    const mic = new MicPitch();
+    mic
+      .start()
+      .then(() => {
+        const loop = () => {
+          if (!alive) return;
+          raf = requestAnimationFrame(loop);
+          const heard = mic.read(); // una lettura per fotogramma (filtra i salti d'ottava)
+          const e = engineRef.current;
+          if (heard == null || !e?.playing || ++tick % 3) return; // ~20 campioni al secondo
+          const tv = e.currentTime - mic.latency;
+          // solo dove la melodia canta: niente rumori o chiacchiere fra una strofa e l'altra
+          if (notes.some((n) => n[0] <= tv && tv <= n[1])) rangeSamples.current.push(heard);
+        };
+        if (alive) raf = requestAnimationFrame(loop);
+      })
+      .catch(() => {});
+    return () => {
+      alive = false;
+      cancelAnimationFrame(raf);
+      mic.stop();
+    };
+  }, [rangeOn, pitchActive, notes]);
+  const sendRange = () => {
+    if (rangeSent.current || !entry.singer || partner) return;
+    const r = [...rangeSamples.current, ...(scoreRef.current[0]?.range ?? [])].sort((a, b) => a - b);
+    if (r.length < 20 * 15) return; // meno di 15 secondi di voce: troppo poco
+    rangeSent.current = true;
+    const q = (p: number) => r[Math.floor(p * (r.length - 1))];
+    api
+      .voiceRange({ singer: entry.singer, song_id: song.id, lo: q(0.05), mid: q(0.5), hi: q(0.95), seconds: r.length / 20 })
+      .catch(() => {});
+  };
+  const sendRangeRef = useRef(sendRange);
+  sendRangeRef.current = sendRange;
+  // il player si chiude prima della fine (Avanti, Stop): quello che si è cantato conta lo stesso
+  useEffect(() => () => sendRangeRef.current(), []);
   // pannello finito: si passa al brano dopo (o alla schermata principale)
   // pannello dei risultati aperto da questo player (se il player si chiude prima, si chiude anche lui)
   const resultsShown = useRef(false);
@@ -460,6 +525,7 @@ export function Player({ entry, next, waitingNext, onClose, onNext, mini = false
         onGoneRef.current?.(); // mix finito: il brano in uscita sparisce
         return;
       }
+      sendRangeRef.current();
       setPlaying(false);
       finishRecRef.current(true); // esibizione finita: la registrazione va al PC
       // si è cantato: pannello dei risultati, e il brano dopo parte solo qualche secondo dopo il voto
@@ -488,8 +554,28 @@ export function Player({ entry, next, waitingNext, onClose, onNext, mini = false
             .then((b) => void (beatsRef.current = b))
             .catch(() => {})
         : null,
-      engine.load(song.media!.instrumental, song.media!.vocals, (p) => !cancelled && setLoading(p)),
-      api.lyrics(song.id).then((l) => !cancelled && setLines(l.lines)).catch(() => {}),
+      (appliedKey.current
+        ? engine
+            .load(
+              `/media/${song.id}/key/${appliedKey.current}/instrumental.m4a`,
+              `/media/${song.id}/key/${appliedKey.current}/vocals.m4a`,
+              (p) => !cancelled && setLoading(p),
+            )
+            .catch(() => {
+              // tonalità non disponibile: si parte nell'originale
+              appliedKey.current = 0;
+              if (!cancelled) setKey(0);
+              return engine.load(song.media!.instrumental, song.media!.vocals, (p) => !cancelled && setLoading(p));
+            })
+        : engine.load(song.media!.instrumental, song.media!.vocals, (p) => !cancelled && setLoading(p))),
+      api
+        .lyrics(song.id)
+        .then((l) => {
+          if (cancelled) return;
+          linesRef.current = l.lines;
+          setLines(l.lines);
+        })
+        .catch(() => {}),
     ])
       .then(() => {
         if (cancelled) return;
@@ -505,12 +591,18 @@ export function Player({ entry, next, waitingNext, onClose, onNext, mini = false
         raf = requestAnimationFrame(loop);
         if (cuedRef.current) {
           // in attesa del mix: resta fermo, lo farà partire il brano in corso al momento giusto
-          setCued(entry.id, { engine, beats: beatsRef.current, volume: () => volumeRef.current });
+          setCued(entry.id, {
+            engine,
+            beats: beatsRef.current,
+            volume: () => volumeRef.current,
+            voice: longIntro(linesRef.current, beatsRef.current),
+          });
           return;
         }
         // ?seek=120 nell'URL: parte da quel secondo (utile per test e prove)
         const startAt = parseFloat(new URLSearchParams(location.search).get("seek") ?? "");
         if (startAt > 0) engine.seek(startAt);
+        else skipIntro(engine);
         engine.play().then(() => setPlaying(true));
       })
       .catch((e) => !cancelled && setError(String(e?.message ?? e)));
@@ -531,6 +623,7 @@ export function Player({ entry, next, waitingNext, onClose, onNext, mini = false
     const e = engineRef.current;
     if (wasCued.current && !cued && !outgoing && loading >= 1 && e && !e.playing && e.currentTime < 1) {
       e.setMasterVolume(volumeRef.current);
+      skipIntro(e);
       e.play().then(() => setPlaying(true));
     }
     if (!cued) setCued(entry.id, null);
@@ -758,15 +851,15 @@ export function Player({ entry, next, waitingNext, onClose, onNext, mini = false
     const me = engineRef.current;
     const other = getCued(nextId);
     if (!nextId || !me || !other || !playing || loading < 1) return;
-    const plan = planMix(beatsRef.current, me.duration, other.beats);
+    const plan = planMix(beatsRef.current, me.duration, other.beats, other.voice);
     let start = me.timeAt(plan.outStart);
     if (start < me.now + 0.3) {
       // in ritardo (caricamento lento, salto in avanti): dissolvenza da subito, senza battuta
       const left = Math.max(1, me.duration - me.currentTime);
       plan.synced = false;
-      plan.inStart = Math.max(0, (other.beats?.start ?? 0) - 0.05); // senza il silenzio iniziale
       plan.rate = 1;
       plan.length = Math.min(MIX_SECONDS, left);
+      plan.inStart = lateEntry(other.beats, other.voice, plan.length); // senza silenzio e introduzione lunga
       start = me.now + 0.3;
     }
     setMixAt(me.currentTime + (start - me.now) * me.speed);

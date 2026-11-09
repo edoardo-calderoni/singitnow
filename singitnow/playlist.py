@@ -52,6 +52,10 @@ class Playlist:
             raw = json.loads(self._file.read_text(encoding="utf-8"))
             # brani non più in libreria (es. scartati chiudendo l'app durante l'importazione): via dalla coda
             self._entries = [Entry(**e) for e in raw.get("entries", []) if library.get(e.get("song_id", ""))]
+            playing = raw.get("now_playing")
+            if playing and library.get(playing.get("song_id", "")):
+                # l'app si è chiusa mentre suonava: il brano riparte da capo con «Avvia playlist»
+                self._entries.insert(0, Entry(**(playing | {"auto": False})))
             self._waiting = {k: v for k, v in raw.get("waiting", {}).items() if library.get(k)}
             at = raw.get("waiting_at", {})
             self._waiting_at = {
@@ -64,6 +68,8 @@ class Playlist:
 
     def _save(self) -> None:
         data = {
+            # il brano che suonava: dopo un crash torna in cima alla coda (vedi load)
+            "now_playing": asdict(self.now_playing) if self.now_playing else None,
             "entries": [asdict(e) for e in self._entries],
             "waiting": self._waiting,
             "waiting_at": self._waiting_at,

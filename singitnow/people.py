@@ -15,6 +15,7 @@ import logging
 import threading
 from typing import Callable
 
+from . import party
 from .events import hub
 
 log = logging.getLogger(__name__)
@@ -88,6 +89,7 @@ def join(first: str, last: str) -> str:
             except Exception:
                 log.exception("Rinomina %s -> %s", old, now)
     hub.publish("people", public())
+    party.changed()
     return mine
 
 
@@ -110,3 +112,23 @@ def full_of(display: str) -> tuple[str, str] | None:
 def public() -> list[dict]:
     with _lock:
         return [{"first": p[0], "last": p[1], "name": _display[k]} for k, p in _people.items()]
+
+
+def _dump() -> list[list[str]]:
+    with _lock:
+        return [list(p) for p in _people.values()]
+
+
+def _load(data: list) -> None:
+    """Riavvio a metà serata: chi era entrato resta nella festa, con lo stesso nome («Marco R.»)."""
+    with _lock:
+        for first, last in data:
+            first, last = clean(first), clean(last)
+            if first:
+                _people[_key(first, last)] = (first, last)
+        names = short_names(list(_people.values()))
+        _display.clear()
+        _display.update({k: names[p] for k, p in _people.items()})
+
+
+party.register("people", _dump, _load)

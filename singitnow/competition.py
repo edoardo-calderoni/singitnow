@@ -16,7 +16,7 @@ import json
 import threading
 import time
 
-from . import config
+from . import config, party
 from .events import hub
 
 END_DELAY = 2.0  # s a musica ferma prima di chiudere la sessione (un voto può arrivare un attimo dopo)
@@ -89,6 +89,22 @@ def public() -> dict:
 
 def _publish() -> None:
     hub.publish("competition", public())
+    party.changed()
+
+
+def _dump() -> dict:
+    with _lock:
+        return {"results": list(_results)}
+
+
+def _load(data: dict) -> None:
+    """Riavvio a metà serata: la classifica della sessione resta consultabile (la musica è ferma,
+    quindi la sessione è finita: il prossimo brano ne comincia una nuova)."""
+    with _lock:
+        _results[:] = [r for r in data.get("results", []) if isinstance(r, dict) and r.get("singer")]
+
+
+party.register("competition", _dump, _load)
 
 
 def add_score(singer: str, song_id: str, title: str, score: int, entry_id: str = "") -> int | None:

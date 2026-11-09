@@ -16,7 +16,7 @@ from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import __version__, admin, audio, avatars, competition, config, halloffame, mics, mode, names, people, wifi, youtube
+from . import __version__, admin, audio, avatars, competition, config, halloffame, mics, mode, names, party, people, wifi, youtube
 from .events import hub
 from .library import READY, library
 from .pipeline import pipeline
@@ -34,6 +34,7 @@ async def lifespan(app: FastAPI):
     hub.bind_loop(asyncio.get_running_loop())
     library.load()
     playlist.load()
+    party.restore()  # app chiusa a metà serata: partecipanti, voti e competizione come prima
     pipeline.on_ready(playlist.song_ready)
     pipeline.start()
     pipeline.backfill_covers()
@@ -803,7 +804,14 @@ class ScoreReq(BaseModel):
     entry_id: str = ""  # voce della playlist (la competizione esclude il brano in corso quando è stata accesa)
 
 
-_scores: list[dict] = []  # classifica della serata (si azzera quando si riavvia l'app)
+_scores: list[dict] = []  # classifica della serata (resta dopo un riavvio a metà serata, vedi party)
+
+
+def _load_scores(data: list) -> None:
+    _scores[:] = [s for s in data if isinstance(s, dict) and s.get("singer")]
+
+
+party.register("scores", lambda: list(_scores), _load_scores)
 
 
 def _ranking() -> list[dict]:
@@ -889,6 +897,7 @@ def add_score(req: ScoreReq):
     comp_pos = None
     if entry["singer"]:  # senza nome il voto si vede sulla TV ma non entra in classifica
         _scores.append(entry)
+        party.changed()
         ranking = _ranking()
         hub.publish("scores", {"ranking": ranking})
         comp_pos = competition.add_score(entry["singer"], entry["song_id"], entry["title"], entry["score"], req.entry_id)

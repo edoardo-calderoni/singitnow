@@ -26,6 +26,10 @@ PORT = int(os.environ.get("SINGITNOW_PORT", "8765"))
 # "model_bs_roformer_ep_317_sdr_12.9755.ckpt" (migliore ma molto più lento su CPU).
 SEPARATION_MODEL = os.environ.get("SINGITNOW_SEPARATION_MODEL", "UVR-MDX-NET-Inst_HQ_3.onnx")
 
+# Scheda video per la separazione (DirectML: qualsiasi GPU su Windows, AMD/NVIDIA/Intel).
+# "0" la disattiva e forza la CPU.
+USE_GPU = os.environ.get("SINGITNOW_GPU", "1") != "0"
+
 # Modello Whisper per allineamento parole / trascrizione (tiny, base, small, medium, large-v3).
 WHISPER_MODEL = os.environ.get("SINGITNOW_WHISPER_MODEL", "small")
 

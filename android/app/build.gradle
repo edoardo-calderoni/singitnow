@@ -1,0 +1,31 @@
+plugins {
+    id "com.android.application"
+}
+
+android {
+    namespace = "it.singitnow.app"
+    compileSdk = 36
+
+    defaultConfig {
+        applicationId = "it.singitnow.app"
+        minSdk = 24
+        targetSdk = 36
+        versionCode = 7
+        versionName = "1.6"
+    }
+
+    compileOptions {
+        sourceCompatibility = JavaVersion.VERSION_17
+        targetCompatibility = JavaVersion.VERSION_17
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled = false
+            // L'app si installa dai telefoni scaricandola dal PC (non dal Play Store): basta la
+            // chiave di sviluppo di questo PC, sempre la stessa, così gli aggiornamenti si installano
+            // sopra la versione precedente.
+            signingConfig = signingConfigs.debug
+        }
+    }
+}

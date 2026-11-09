@@ -16,3 +16,9 @@ frontend/dist/
 .vscode/
 Thumbs.db
 .DS_Store
+
+# Video della splash (HyperFrames): cache e render (il render finale sta in frontend/public/)
+video/*/.hyperframes/
+video/*/.thumbnails/
+video/*/.waveform-cache/
+video/*/renders/

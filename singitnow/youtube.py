@@ -2,12 +2,15 @@
 
 from __future__ import annotations
 
+import logging
 import re
 import shutil
 from pathlib import Path
 from typing import Any, Callable
 
 import yt_dlp
+
+log = logging.getLogger(__name__)
 
 
 def _js_runtimes() -> dict[str, dict]:
@@ -103,6 +106,68 @@ def search(query: str, limit: int = 12) -> list[dict[str, Any]]:
             }
         )
     return results
+
+
+# Link di YouTube incollati nella ricerca: watch?v=, youtu.be/, shorts/, embed/, live/, music.youtube.com
+_URL_ID = re.compile(
+    r"(?:youtube(?:-nocookie)?\.com/(?:.*[?&]v=|shorts/|embed/|live/|v/)|youtu\.be/)([A-Za-z0-9_-]{11})(?![A-Za-z0-9_-])",
+    re.IGNORECASE,
+)
+
+
+def video_id_from_url(text: str) -> str | None:
+    """ID del video se `text` è un link di YouTube, altrimenti None."""
+    m = _URL_ID.search(text.strip())
+    return m.group(1) if m else None
+
+
+def video_info(video_id: str) -> dict[str, Any]:
+    """Dati di un singolo video (da un link incollato), nello stesso formato dei risultati di ricerca."""
+    opts = _base_opts() | {"skip_download": True, "noplaylist": True}
+    url = f"https://www.youtube.com/watch?v={video_id}"
+    with yt_dlp.YoutubeDL(opts) as ydl:
+        e = ydl.extract_info(url, download=False, process=False)
+    if e.get("live_status") in ("is_live", "is_upcoming"):
+        raise ValueError("È una diretta: si possono importare solo video registrati")
+    return {
+        "youtube_id": e.get("id") or video_id,
+        "title": e.get("title") or "",
+        "channel": e.get("channel") or e.get("uploader") or "",
+        "duration": e.get("duration") or 0,
+        "thumbnail": _best_thumbnail(e),
+        "url": url,
+    }
+
+
+def search_song(query: str, limit: int = 12) -> list[dict[str, Any]]:
+    """Ricerca dal pannello «Aggiungi brano».
+
+    Si cerca il videoclip ufficiale; se YouTube non restituisce niente (succede con alcune parole
+    che considera "sensibili", es. «Tananai Sesso Occasionale», anche se dal sito i video si
+    trovano) si riprova senza l'aggiunta e poi togliendo una parola alla volta, mettendo in cima
+    i video il cui titolo contiene tutte le parole cercate.
+    """
+    query = " ".join(query.split())
+    tries = [official_query(query), query]
+    words = query.split()
+    if len(words) > 1:
+        # prima si tolgono le parole più lunghe dopo la prima (di solito la prima è l'artista)
+        for w in sorted(words[1:], key=len, reverse=True)[:3]:
+            rest = " ".join(x for x in words if x is not w)
+            tries.append(official_query(rest))
+    seen: set[str] = set()
+    for q in tries:
+        if q in seen:
+            continue
+        seen.add(q)
+        results = search(q, limit)
+        if results:
+            if q != tries[0]:
+                log.info("Ricerca %r senza risultati: trovati con %r", query, q)
+            wanted = [w.casefold() for w in words]
+            hits = lambda r: sum(w in r["title"].casefold() for w in wanted)  # noqa: E731
+            return sorted(results, key=lambda r: -hits(r))  # ordinamento stabile: a parità resta quello di YouTube
+    return []
 
 
 _NOISE = re.compile(

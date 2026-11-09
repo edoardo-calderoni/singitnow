@@ -1,0 +1,59 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Logo di SingITnow per la schermata di attesa (stesso disegno di ic_launcher_foreground, senza il margine
+     dell'icona adattiva): microfono con sfumatura rosa → viola → azzurro -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="64dp"
+    android:height="64dp"
+    android:viewportWidth="64"
+    android:viewportHeight="64">
+    <group
+        android:pivotX="32"
+        android:pivotY="32">
+        <!-- capsula -->
+        <path android:pathData="M32,10 a8,8 0 0 1 8,8 v12 a8,8 0 0 1 -16,0 v-12 a8,8 0 0 1 8,-8z">
+            <aapt:attr name="android:fillColor">
+                <gradient
+                    android:type="linear"
+                    android:startX="24" android:startY="10"
+                    android:endX="40" android:endY="38">
+                    <item android:offset="0" android:color="#FFFF3D9A" />
+                    <item android:offset="0.55" android:color="#FF8B5CF6" />
+                    <item android:offset="1" android:color="#FF22D3EE" />
+                </gradient>
+            </aapt:attr>
+        </path>
+        <!-- arco -->
+        <path
+            android:pathData="M17,30 a15,15 0 0 0 30,0"
+            android:strokeWidth="4"
+            android:strokeLineCap="round">
+            <aapt:attr name="android:strokeColor">
+                <gradient
+                    android:type="linear"
+                    android:startX="17" android:startY="30"
+                    android:endX="47" android:endY="45">
+                    <item android:offset="0" android:color="#FFFF3D9A" />
+                    <item android:offset="0.55" android:color="#FF8B5CF6" />
+                    <item android:offset="1" android:color="#FF22D3EE" />
+                </gradient>
+            </aapt:attr>
+        </path>
+        <!-- asta e base -->
+        <path
+            android:pathData="M32,45 v9 M24,54 h16"
+            android:strokeWidth="4"
+            android:strokeLineCap="round">
+            <aapt:attr name="android:strokeColor">
+                <gradient
+                    android:type="linear"
+                    android:startX="24" android:startY="45"
+                    android:endX="40" android:endY="54">
+                    <item android:offset="0" android:color="#FFFF3D9A" />
+                    <item android:offset="0.55" android:color="#FF8B5CF6" />
+                    <item android:offset="1" android:color="#FF22D3EE" />
+                </gradient>
+            </aapt:attr>
+        </path>
+    </group>
+</vector>

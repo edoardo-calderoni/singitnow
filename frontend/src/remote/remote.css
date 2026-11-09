@@ -64,6 +64,10 @@ body {
 .m-main {
   padding: 16px;
 }
+.m-welcome-offline {
+  width: 100%;
+  border-radius: 12px;
+}
 .m-section {
   display: flex;
   flex-direction: column;
@@ -98,16 +102,26 @@ body {
   justify-content: flex-end;
 }
 .m-now.has-cover .m-now-bg {
-  filter: none;
-  transform: none;
+  /* la copertina si riconosce ma resta in secondo piano: titolo e "Sul palco" devono leggersi bene */
+  filter: brightness(0.55) saturate(1.1) blur(1.5px);
+  transform: scale(1.03);
 }
 .m-now-shade {
   position: absolute;
   inset: 0;
-  background: linear-gradient(180deg, rgba(8, 8, 16, 0.1) 0%, rgba(8, 8, 16, 0.55) 45%, rgba(8, 8, 16, 0.92) 100%);
+  background: linear-gradient(180deg, rgba(8, 8, 16, 0.35) 0%, rgba(8, 8, 16, 0.7) 40%, rgba(8, 8, 16, 0.94) 100%);
 }
 .m-now:not(.has-cover) .m-now-shade {
   display: none;
+}
+.m-now-remove {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 2;
+  background: rgba(10, 10, 18, 0.55);
+  backdrop-filter: blur(6px);
+  border-radius: 50%;
 }
 .m-now-body {
   position: relative;
@@ -127,6 +141,16 @@ body {
   font-family: var(--font-display);
   font-size: 22px;
   font-weight: 700;
+}
+.m-now.has-cover .m-now-title,
+.m-now.has-cover .m-now-body > .muted {
+  text-shadow: 0 2px 10px rgba(0, 0, 0, 0.8);
+}
+.m-now.has-cover .eyebrow {
+  align-self: flex-start;
+  padding: 3px 8px;
+  border-radius: 6px;
+  background: rgba(8, 8, 16, 0.6);
 }
 .m-now-ctrl {
   display: flex;
@@ -200,6 +224,39 @@ body {
 .m-item-sub b {
   color: var(--text);
 }
+.m-item-title.wrap {
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+.m-item-artist {
+  margin-top: 1px;
+  font-size: 13.5px;
+  color: var(--text-2);
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+}
+.m-item-meta {
+  margin-top: 6px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+  font-size: 13px;
+  color: var(--text-2);
+}
+.m-item-meta > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+}
+.m-item-meta b {
+  color: var(--text);
+}
+.m-wait {
+  color: var(--text-2);
+  font-weight: 600;
+}
 .m-item-act {
   display: flex;
   flex-direction: column;
@@ -234,7 +291,8 @@ body {
   bottom: 0;
   z-index: 10;
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-auto-flow: column;
+  grid-auto-columns: 1fr; /* 3 schede, 4 per gli amministratori (Settaggi) */
   padding: 6px 8px calc(6px + env(safe-area-inset-bottom));
   background: rgba(17, 17, 29, 0.92);
   backdrop-filter: blur(16px);
@@ -257,20 +315,6 @@ body {
 .m-tabs button.on svg {
   color: var(--pink);
 }
-.m-dot {
-  position: absolute;
-  top: 2px;
-  left: calc(50% + 8px);
-  min-width: 18px;
-  height: 18px;
-  padding: 0 5px;
-  border-radius: 9px;
-  background: var(--pink);
-  color: white;
-  font-size: 10px;
-  display: grid;
-  place-items: center;
-}
 
 /* ---------- benvenuto */
 .m-welcome {
@@ -283,11 +327,18 @@ body {
   max-width: 440px;
   margin: 0 auto;
 }
+.m-welcome-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
 .m-welcome-logo {
   width: 72px;
   height: 72px;
+  flex-shrink: 0;
 }
 .m-welcome h1 {
+  margin: 0;
   font-size: 30px;
   line-height: 1.15;
 }
@@ -389,7 +440,7 @@ body {
 }
 .m-lyrics-head {
   position: sticky;
-  top: 60px;
+  top: calc(var(--m-head-h, 70px) + 6px); /* subito sotto l'intestazione, qualunque sia la sua altezza */
   z-index: 5;
   display: flex;
   align-items: center;
@@ -409,6 +460,50 @@ body {
 }
 .m-lyrics {
   padding: 30vh 4px 40vh;
+}
+/* sfondo della scheda Testo: la copertina del disco nitida al centro, con i bordi che sfumano,
+   sopra un alone sfocato dei suoi colori; un velo scuro tiene il testo leggibile */
+.m-lyrics-bg {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+  animation: m-lyrics-bg-in 0.6s ease-out;
+}
+.m-lyrics-bg-glow {
+  position: absolute;
+  inset: -60px; /* la sfocatura non deve lasciare bordi chiari */
+  background-size: cover;
+  background-position: center;
+  filter: blur(40px) saturate(1.4);
+  opacity: 0.35;
+}
+.m-lyrics-bg-art {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: min(100vw, 62vh);
+  aspect-ratio: 1;
+  object-fit: cover;
+  transform: translate(-50%, -50%);
+  opacity: 0.5;
+  -webkit-mask-image: radial-gradient(circle at center, #000 45%, transparent 72%);
+  mask-image: radial-gradient(circle at center, #000 45%, transparent 72%);
+}
+.m-lyrics-bg::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(11, 11, 20, 0.45) 0%, rgba(11, 11, 20, 0.6) 50%, rgba(11, 11, 20, 0.8) 100%);
+}
+@keyframes m-lyrics-bg-in {
+  from {
+    opacity: 0;
+  }
+}
+.m-lyrics .m-lyric:not(.current) {
+  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.6);
 }
 .m-lyric {
   margin: 0 0 18px;
@@ -435,6 +530,13 @@ body {
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
+}
+
+.m-lyric-orig {
+  display: block;
+  font-size: 0.6em;
+  font-weight: 600;
+  opacity: 0.7;
 }
 
 /* ---------- volume voce guida (solo durante il proprio brano) */
@@ -619,6 +721,8 @@ body {
   z-index: 95;
   display: grid;
   place-items: center;
+  /* la colonna non si allarga oltre lo schermo anche se il contenuto vorrebbe stare su una riga */
+  grid-template-columns: minmax(0, 1fr);
   padding: 16px;
   background: rgba(5, 5, 12, 0.8);
   backdrop-filter: blur(8px);
@@ -834,23 +938,21 @@ body {
   font-size: 13px;
   color: var(--red);
 }
-.m-admin-badge {
-  margin-left: 6px;
-  padding: 2px 7px;
-  border-radius: 6px;
-  font-size: 10px;
-  font-weight: 800;
-  letter-spacing: 0.1em;
-  color: white;
-  background: var(--grad);
+/* ---------- popup della password da amministratore (sopra la scheda del profilo) */
+.m-sheet.m-pw-back {
+  z-index: 110;
 }
-.m-admin-on {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 14px;
+.m-pw {
+  position: relative;
 }
-
+.m-pw .m-admin-err {
+  align-self: flex-start;
+}
+.m-pw-close {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+}
 /* ---------- comandi amministratore */
 .m-admin-ctrl {
   display: flex;
@@ -860,7 +962,8 @@ body {
 }
 .m-admin-btns {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  /* 4 pulsanti su due righe: Pausa, Stop / Ricomincia, Avanti */
+  grid-template-columns: 1fr 1fr;
   gap: 6px;
 }
 .m-admin-btns .btn {
@@ -871,6 +974,75 @@ body {
 }
 .m-admin-ctrl .m-vol {
   margin-top: 0;
+}
+/* avviso in primo piano (es. competizione senza microfono) */
+.m-notice {
+  text-align: center;
+}
+.m-notice p {
+  margin: 0;
+  font-size: 16px;
+  line-height: 1.5;
+}
+.m-notice-icon {
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: rgba(248, 113, 113, 0.15);
+  color: var(--red, #f87171);
+}
+
+/* autotune e voce dei microfoni */
+.m-autotune .icon-btn.on {
+  color: white;
+  background: var(--grad);
+}
+.m-voice {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 4px;
+}
+.m-voice-label {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-2);
+}
+.m-voice .m-mode-hint {
+  margin-top: 0;
+}
+.m-autotune-live {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--cyan, #22d3ee);
+}
+.m-voice-warn {
+  font-size: 13px;
+  color: var(--amber, #fbbf24);
+}
+
+/* competizione (Settaggi) */
+.m-comp .m-switch {
+  margin-bottom: 4px;
+}
+
+/* microfoni: due cursori uno sotto l'altro; silenziati in rosso */
+.m-mics {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.m-mics .m-mode-label {
+  margin-bottom: 0;
+}
+.m-mic.muted .m-vol-label,
+.m-mic.muted .m-vol-label b {
+  color: var(--red, #f87171);
+}
+.m-mic input[type="range"]:disabled {
+  opacity: 0.4;
 }
 .m-admin-ctrl.compact {
   margin: 0 0 10px;
@@ -952,4 +1124,792 @@ body {
   margin-top: 8px;
   font-size: 13px;
   color: var(--muted, rgba(255, 255, 255, 0.6));
+}
+
+/* ---------- amministratore: Wi-Fi per gli ospiti */
+.m-wifi-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.m-wifi-ssid {
+  flex: 1;
+  min-width: 0;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+.m-wifi-show {
+  width: 100%;
+  justify-content: center;
+  margin-top: 10px;
+}
+.m-wifi-hint {
+  font-size: 13px;
+  color: var(--cyan, #22d3ee);
+  text-align: center;
+}
+.m-wifi-detect-label {
+  margin-bottom: -8px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted, rgba(255, 255, 255, 0.6));
+}
+.m-wifi-detect {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 8px;
+  width: 100%;
+}
+.m-wifi-detect.two {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+.m-wifi-detect .btn {
+  justify-content: center;
+}
+.m-wifi-note {
+  margin: -6px 0 0;
+  text-align: center;
+}
+.m-wifi-hidden {
+  align-self: flex-start;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}
+.m-wifi-qr {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--muted, rgba(255, 255, 255, 0.6));
+  text-align: center;
+}
+.m-wifi-qr > div {
+  width: min(220px, 60vw);
+}
+.m-wifi-qr svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 10px;
+}
+
+/* ---------- amministratore: avvio manuale della playlist */
+.m-start-playlist {
+  width: 100%;
+  justify-content: center;
+  margin: 4px 0 14px;
+  padding: 14px;
+  font-size: 16px;
+}
+
+/* ---------- classifica della serata */
+.m-ranking {
+  list-style: none;
+  margin: 0 0 16px;
+  padding: 0;
+  display: grid;
+  gap: 8px;
+}
+.m-ranking li {
+  display: grid;
+  grid-template-columns: 30px auto 1fr auto;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+}
+.m-ranking li.me {
+  border-color: var(--pink);
+}
+.m-ranking .pos {
+  color: #ffd166;
+  font-weight: 800;
+  display: flex;
+  justify-content: center;
+}
+.m-ranking .who {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  font-size: 14px;
+}
+.m-ranking .score {
+  font-size: 20px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------- invito a installare l'app */
+.m-install {
+  position: relative;
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+  margin: 0 0 16px;
+  padding: 14px 40px 14px 14px;
+  border-radius: 18px;
+  background: linear-gradient(135deg, rgba(255, 61, 154, 0.16), rgba(34, 211, 238, 0.12));
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+.m-install img {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  flex: none;
+}
+.m-install-body {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  font-size: 14px;
+  line-height: 1.35;
+}
+.m-install-body b {
+  font-weight: 700;
+}
+.m-install-body .btn {
+  align-self: flex-start;
+  margin-top: 4px;
+  text-decoration: none;
+}
+.m-install-body small {
+  color: var(--text-2);
+  font-size: 12px;
+}
+.m-install-x {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.3);
+  color: var(--text-2);
+}
+.inline-icon {
+  vertical-align: -2px;
+}
+
+/* «È il tuo turno»: tutta la scheda porta al testo */
+.m-turn.clickable {
+  cursor: pointer;
+}
+.m-turn.clickable:active {
+  transform: scale(0.98);
+}
+
+/* ---------- riordino della coda col dito (amministratori) */
+.m-item.draggable {
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  transition: transform 0.18s ease;
+  position: relative;
+}
+.m-item.dragging {
+  box-shadow: 0 14px 36px rgba(0, 0, 0, 0.55);
+  border-color: var(--pink);
+  background: var(--surface-2, #1c1c2e);
+}
+.m-list.reordering .m-item:not(.dragging) {
+  opacity: 0.85;
+}
+.m-reorder-hint {
+  list-style: none;
+  font-size: 12px;
+  color: var(--text-3);
+  text-align: center;
+  margin: -2px 0 2px;
+}
+
+/* ---------- prossimi a cantare: copertina del disco come sfondo della card (come sulla TV) */
+.m-item.m-qitem {
+  position: relative;
+  overflow: hidden;
+  isolation: isolate;
+  padding: 9px 10px;
+  border-color: var(--border);
+  background: var(--surface);
+}
+.m-qbg {
+  position: absolute;
+  inset: 0;
+  z-index: -2;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  filter: brightness(0.6) saturate(1.1);
+  pointer-events: none;
+}
+/* velo scuro: più deciso a sinistra, dove c'è il testo */
+.m-qitem::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: linear-gradient(90deg, rgba(10, 10, 18, 0.88) 0%, rgba(10, 10, 18, 0.72) 60%, rgba(10, 10, 18, 0.55) 100%);
+  pointer-events: none;
+}
+.m-qitem.mine {
+  border-color: rgba(255, 61, 154, 0.6);
+}
+.m-qitem.mine::before {
+  background: linear-gradient(90deg, rgba(40, 8, 28, 0.88) 0%, rgba(10, 10, 18, 0.72) 60%, rgba(10, 10, 18, 0.55) 100%);
+}
+.m-qitem .m-pos {
+  color: var(--text-2);
+}
+.m-qitem .m-item-artist,
+.m-qitem .m-item-meta,
+.m-qitem .m-wait {
+  color: rgba(255, 255, 255, 0.72);
+}
+.m-qitem .m-item-meta {
+  margin-top: 3px;
+}
+.m-qitem .m-wait {
+  color: #fff;
+}
+.m-qsinger {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 5px;
+  font-size: 14px;
+}
+.m-qsinger b {
+  overflow-wrap: anywhere;
+}
+.m-qitem.dragging {
+  border-color: var(--pink);
+}
+
+/* «Carica altri risultati» in fondo alla ricerca su YouTube */
+.load-more {
+  display: flex;
+  justify-content: center;
+  margin-top: 14px;
+}
+
+/* copertina dei risultati di ricerca: apre il video su YouTube */
+.yt-preview {
+  position: relative;
+  padding: 0;
+  border: 0;
+  cursor: pointer;
+  flex: none;
+}
+.yt-play {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  display: grid;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+  background: rgba(255, 0, 0, 0.85);
+  color: #fff;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.5);
+  transition: transform 0.15s;
+  pointer-events: none;
+}
+.yt-preview:hover .yt-play {
+  transform: translate(-50%, -50%) scale(1.12);
+}
+.yt-preview:active .yt-play {
+  transform: translate(-50%, -50%) scale(0.92);
+}
+
+/* ---------- «X ha aggiunto …»: striscia sottile sopra l'intestazione (non copre i contenuti) */
+.m-added {
+  position: fixed;
+  top: calc(8px + env(safe-area-inset-top));
+  left: 50%;
+  z-index: 85; /* sopra l'intestazione, sotto dialoghi e avvisi importanti */
+  transform: translateX(-50%);
+  display: flex;
+  flex-direction: column;
+  width: min(420px, calc(100% - 24px));
+  padding: 8px 12px 8px 8px;
+  border-radius: 16px;
+  background: #1e1b34; /* pieno: sotto non traspare niente (righe dell'intestazione o della pagina) */
+  border: 1px solid var(--border-strong);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  pointer-events: none; /* i tocchi passano sotto: non blocca la navigazione */
+  animation: m-added-in 0.3s ease-out;
+}
+.m-added.leaving {
+  animation: m-added-out 0.3s ease-in forwards;
+}
+.m-added-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+/* copertina del disco a sinistra */
+.m-added-cover {
+  flex: none;
+  width: 56px;
+  height: 56px;
+  border-radius: 10px;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  background: var(--surface-2);
+  color: var(--text-2);
+}
+.m-added-cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+/* a destra: titolo, autore e messaggio (allineati tra loro) */
+.m-added-body {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+.m-added-title,
+.m-added-artist {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.m-added-title {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--text);
+}
+.m-added-artist {
+  font-size: 13px;
+  color: var(--text-2);
+}
+.m-added-msg {
+  margin-top: 3px;
+  font-size: 12px;
+  color: var(--text-2);
+}
+@keyframes m-added-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -12px);
+  }
+}
+@keyframes m-added-out {
+  to {
+    opacity: 0;
+    transform: translate(-50%, -12px);
+  }
+}
+
+/* ---------- connessione al PC persa da più di 5 secondi: schermata come quella d'avvio dell'app */
+.m-lost {
+  position: fixed;
+  inset: 0;
+  z-index: 200; /* sopra tutto, anche dialoghi e avvisi */
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 16px;
+  padding: calc(32px + env(safe-area-inset-top)) 32px calc(32px + env(safe-area-inset-bottom));
+  background: #0b0b14;
+  text-align: center;
+  animation: m-lost-in 0.3s ease-out;
+}
+.m-lost-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-family: var(--font-display);
+  font-size: 32px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+.m-lost-brand img {
+  width: 56px;
+  height: 56px;
+}
+.m-lost p {
+  margin: 0;
+  font-size: 16px;
+  color: var(--text-2);
+}
+/* rotellina circolare */
+.m-lost-spinner {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  border: 4px solid rgba(255, 255, 255, 0.12);
+  border-top-color: var(--violet, #8b5cf6);
+  animation: m-lost-spin 0.9s linear infinite;
+}
+@keyframes m-lost-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes m-lost-in {
+  from {
+    opacity: 0;
+  }
+}
+
+/* ---------- «Blocca inserimenti» acceso dal PC: avviso nella scheda Brani */
+.m-locked {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 12px 16px 0;
+  padding: 12px 14px;
+  border-radius: 14px;
+  font-size: 14px;
+  color: var(--text);
+  background: rgba(251, 191, 36, 0.12);
+  border: 1px solid rgba(251, 191, 36, 0.35);
+}
+.m-locked svg {
+  flex: none;
+  color: #fbbf24;
+}
+/* modalità DJ: tre modalità affiancate, scelta del DJ e avviso «Sei il DJ della serata» */
+.m-seg.m-seg-3 {
+  grid-template-columns: repeat(3, 1fr);
+}
+.m-dj-field {
+  margin-top: 10px;
+}
+.m-dj-field select {
+  font: inherit;
+  font-weight: 600;
+  color: inherit;
+}
+.m-locked.m-dj-me {
+  background: rgba(139, 92, 246, 0.14);
+  border-color: rgba(139, 92, 246, 0.45);
+}
+.m-locked.m-dj-me svg {
+  color: var(--violet);
+}
+/* eletto DJ della serata: avviso al centro con il giradischi */
+.m-sheet.m-dj-back {
+  z-index: 105;
+}
+.m-dj-card {
+  text-align: center;
+  gap: 18px;
+  padding: 28px 22px 20px;
+  animation: m-dj-pop 0.4s cubic-bezier(0.2, 0.9, 0.3, 1.3);
+}
+.m-dj-card p {
+  margin: 0;
+  font-size: 16px;
+  line-height: 1.45;
+  color: var(--text-2);
+}
+.m-dj-card p b {
+  display: inline-block;
+  margin-bottom: 6px;
+  font-family: var(--font-display);
+  font-size: 20px;
+  color: var(--text);
+}
+.turntable-disc {
+  transform-origin: 52px 60px;
+  animation: m-dj-spin 1.8s linear infinite;
+}
+.m-dj-me svg {
+  flex: none;
+}
+@keyframes m-dj-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes m-dj-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.85);
+  }
+}
+.m-locked.m-dj-live {
+  margin: 4px 0 0; /* dentro la sezione Live, già con i suoi margini */
+}
+/* modalità DJ: richieste degli utenti con Accetta / Rifiuta */
+.m-req-actions {
+  display: flex;
+  gap: 4px;
+  position: relative; /* sopra la copertina di sfondo */
+}
+.m-req-ok {
+  color: #34d399;
+}
+.m-requests {
+  margin-bottom: 8px;
+}
+.m-added-msg b {
+  color: var(--text);
+}
+/* numero di richieste in attesa sulla scheda «Richieste» del DJ */
+.m-badge {
+  position: absolute;
+  top: 3px;
+  left: calc(50% + 6px);
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 9px;
+  display: grid;
+  place-items: center;
+  font-size: 11px;
+  font-weight: 800;
+  color: white;
+  background: var(--pink);
+}
+/* Settaggi degli amministratori: playlist e password (come nel pannello del PC) */
+.m-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.m-settings .m-mode-label {
+  margin-bottom: 0;
+}
+.m-setting {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.m-setting .m-mode-hint {
+  margin-top: 0;
+}
+
+/* ------------------------------------------------------------- duetti */
+.m-qsinger {
+  flex-wrap: wrap;
+}
+.m-duet-amp {
+  color: var(--text-2);
+  font-weight: 700;
+}
+.m-duet-chip {
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--grad);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.m-qitem.duet {
+  border-color: rgba(140, 92, 255, 0.6);
+}
+.m-duet-btn {
+  margin-top: 8px;
+  align-self: flex-start;
+}
+.m-duet-row {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  margin-top: 8px;
+  padding: 4px 4px 4px 10px;
+  border-radius: 999px;
+  font-size: 13px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+}
+.m-duet-row.on {
+  background: rgba(140, 92, 255, 0.22);
+  border-color: rgba(140, 92, 255, 0.55);
+}
+.m-duet-x {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.12);
+  color: inherit;
+  cursor: pointer;
+}
+.m-duet-back {
+  z-index: 110; /* sopra l'avviso «Fra poco tocca a te» */
+}
+.m-duet-invite {
+  text-align: center;
+  border-color: rgba(255, 61, 154, 0.5);
+  box-shadow: 0 0 60px rgba(255, 61, 154, 0.25);
+}
+.m-duet-faces {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.m-duet-faces .avatar {
+  width: 64px;
+  height: 64px;
+  font-size: 26px;
+}
+.m-duet-mic {
+  font-size: 30px;
+  animation: m-duet-pulse 1.2s ease-in-out infinite;
+}
+@keyframes m-duet-pulse {
+  50% {
+    transform: scale(1.2);
+  }
+}
+.m-duet-song {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  min-width: 0;
+  text-align: left;
+}
+.m-duet-cover {
+  flex: none;
+  width: 52px;
+  height: 52px;
+  border-radius: 10px;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+}
+.m-duet-cover img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.m-duet-when {
+  font-size: 14px;
+  color: var(--text-2);
+}
+.m-duet-invite .m-sheet-actions,
+.m-duet-pick .m-sheet-actions {
+  width: 100%;
+}
+.m-duet-users {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  max-height: 50vh;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.m-duet-users button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 48px;
+  padding: 8px 12px;
+  border-radius: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.06);
+  color: inherit;
+  font: inherit;
+  font-weight: 650;
+  text-align: left;
+  cursor: pointer;
+}
+.m-duet-users button:active {
+  background: rgba(255, 61, 154, 0.2);
+}
+.m-ready-duet {
+  font-size: 15px;
+  font-weight: 700;
+}
+/* conto alla rovescia del proprio turno (brano in preparazione che sarà il prossimo) */
+.m-turn-clock {
+  font-variant-numeric: tabular-nums;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+/* conferma di artista e titolo prima di importare da YouTube */
+.m-import {
+  align-items: stretch;
+  gap: 12px;
+}
+.m-import-video {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+.m-import-video img {
+  flex: none;
+  width: 88px;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  border-radius: 8px;
+}
+.m-import-video-title {
+  font-size: 13px;
+  line-height: 1.3;
+  color: var(--text-2);
+}
+.m-import-label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-2);
+}
+.m-import-hint {
+  font-size: 12px;
+  color: var(--text-3);
+}
+/* benvenuto: perché serve il cognome */
+.m-welcome-note {
+  margin: -4px 0 0;
+  font-size: 12px;
+  text-align: center;
+}
+
+/* profilo: esci dalla festa */
+.m-logout {
+  width: 100%;
+  justify-content: center;
+  color: var(--red, #f87171);
+}
+
+/* brano in preparazione: nota sotto l'avanzamento (va a capo se serve) */
+.m-wait-note {
+  margin-top: 2px;
+  font-size: 13px;
+  color: var(--text-2);
+}
+
+/* competizione dentro la scheda «Modalità della serata» */
+.m-comp-inline {
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }

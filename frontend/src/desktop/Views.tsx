@@ -13,8 +13,25 @@ import {
   MonitorPlay,
   Plus,
   ArrowLeft,
+  ChevronDown,
+  X,
 } from "lucide-react";
-import { api, filterSongs, fmtEta, fmtTime, LANGUAGES, languageLabel, SearchResult, Song } from "../shared/api";
+import {
+  api,
+  filterSongs,
+  fmtEta,
+  fmtTime,
+  youtubeId,
+  LANGUAGES,
+  languageLabel,
+  PlaylistState,
+  SearchResult,
+  Song,
+} from "../shared/api";
+import { Avatar } from "../shared/Avatar";
+import { ImportDialog } from "./Dialogs";
+import { useYoutubeSearch } from "../shared/search";
+import { openExternal } from "../shared/external";
 
 function StatusBadge({ song }: { song: Song }) {
   if (song.status === "ready") return null;
@@ -34,6 +51,8 @@ function StatusBadge({ song }: { song: Song }) {
 // ------------------------------------------------------------------ Libreria
 export function LibraryView({
   songs,
+  waiting,
+  onCancelWaiting,
   onPlay,
   onQueue,
   onEdit,
@@ -41,6 +60,8 @@ export function LibraryView({
   goSearch,
 }: {
   songs: Song[];
+  waiting: PlaylistState["waiting"]; // prenotazioni di brani in preparazione (fuori dalla playlist)
+  onCancelWaiting: (songId: string, singer: string) => void;
   onPlay: (s: Song) => void;
   onQueue: (s: Song) => void;
   onEdit: (s: Song) => void;
@@ -53,7 +74,11 @@ export function LibraryView({
   const ready = songs.filter((s) => s.status === "ready").length;
 
   const remove = async (s: Song) => {
-    if (!confirm(`Eliminare "${s.title}" dalla libreria?`)) return;
+    const preparing = s.status !== "ready" && s.status !== "error";
+    const ask = preparing
+      ? `Interrompere l'importazione di "${s.title}"? Il brano verrà cancellato.`
+      : `Eliminare "${s.title}" dalla libreria?`;
+    if (!confirm(ask)) return;
     try {
       await api.deleteSong(s.id);
     } catch (e: any) {
@@ -62,7 +87,7 @@ export function LibraryView({
   };
 
   return (
-    <section className="view">
+    <section className="view view-fixed">
       <header className="view-head">
         <div>
           <h1>Libreria</h1>
@@ -72,7 +97,7 @@ export function LibraryView({
           </p>
         </div>
         <button className="btn btn-primary" onClick={goSearch}>
-          <Plus size={18} /> Aggiungi brano
+          <Plus size={18} /> Nuovo brano
         </button>
       </header>
 
@@ -93,6 +118,8 @@ export function LibraryView({
         </div>
       </div>
 
+      {/* scorre solo la lista: titolo, ricerca e filtro restano fermi in alto */}
+      <div className="view-scroll">
       {songs.length === 0 ? (
         <div className="empty">
           <div className="empty-icon">
@@ -101,7 +128,7 @@ export function LibraryView({
           <h3>La libreria è vuota</h3>
           <p>Cerca il primo brano su YouTube: lo scarichiamo e prepariamo base e testo in automatico.</p>
           <button className="btn btn-primary" onClick={goSearch}>
-            <Plus size={18} /> Aggiungi brano
+            <Plus size={18} /> Nuovo brano
           </button>
         </div>
       ) : shown.length === 0 ? (
@@ -125,7 +152,12 @@ export function LibraryView({
                 <div className="song-title ellipsis">{s.title}</div>
                 <div className="song-sub">
                   <span className="song-artist ellipsis">{s.artist || "Artista sconosciuto"}</span>
-                  <span className="song-duration">{fmtTime(s.duration)}</span>
+                </div>
+                <div className="song-sub song-info">
+                  <span className="song-duration">
+                    <span className="song-duration-label">Durata</span>
+                    {fmtTime(s.duration)}
+                  </span>
                   {s.language && <span className="badge lang">{languageLabel(s.language)}</span>}
                   {s.lyrics_source === "none" && <span className="badge err">Senza testo</span>}
                 </div>
@@ -136,6 +168,27 @@ export function LibraryView({
                     </div>
                     <span>{s.step}</span>
                     {fmtEta(s) && <span className="song-eta">{fmtEta(s)}</span>}
+                  </div>
+                )}
+                {/* chi l'ha prenotato: entra in playlist appena pronto, qui si può annullare */}
+                {s.status !== "ready" && waiting.some((w) => w.song_id === s.id) && (
+                  <div className="song-waiting">
+                    <span className="muted">In playlist appena pronto:</span>
+                    {waiting
+                      .filter((w) => w.song_id === s.id)
+                      .map((w, i) => (
+                        <span key={i} className="song-waiting-chip">
+                          {w.singer ? <Avatar name={w.singer} className="xs" /> : null}
+                          <span>{w.singer || "senza nome"}</span>
+                          <button
+                            className="icon-btn danger"
+                            title="Annulla la prenotazione"
+                            onClick={() => onCancelWaiting(s.id, w.singer)}
+                          >
+                            <X size={14} />
+                          </button>
+                        </span>
+                      ))}
                   </div>
                 )}
                 {s.status === "error" && <div className="song-error ellipsis">{s.error}</div>}
@@ -161,8 +214,7 @@ export function LibraryView({
                 </button>
                 <button
                   className="icon-btn danger"
-                  title="Elimina"
-                  disabled={s.status !== "ready" && s.status !== "error"}
+                  title={s.status !== "ready" && s.status !== "error" ? "Interrompi l'importazione e cancella" : "Elimina"}
                   onClick={() => remove(s)}
                 >
                   <Trash2 size={18} />
@@ -172,6 +224,7 @@ export function LibraryView({
           ))}
         </ul>
       )}
+      </div>
     </section>
   );
 }
@@ -187,34 +240,31 @@ export function SearchView({
   onBack: () => void;
 }) {
   const [q, setQ] = useState("");
-  const [results, setResults] = useState<SearchResult[] | null>(null);
-  const [busy, setBusy] = useState(false);
+  const search = useYoutubeSearch(onToast);
+  const { results, busy } = search;
   const byId = useMemo(() => new Map(songs.map((s) => [s.id, s])), [songs]);
 
-  const run = async (e?: React.FormEvent) => {
+  const run = (e?: React.FormEvent, text = q) => {
     e?.preventDefault();
-    if (!q.trim()) return;
-    setBusy(true);
-    try {
-      setResults(await api.search(q));
-    } catch (err: any) {
-      onToast(err.message);
-    } finally {
-      setBusy(false);
-    }
+    search.run(text);
   };
 
-  const add = async (r: SearchResult) => {
+  // prima di importare si confermano artista e titolo (servono a trovare il testo giusto)
+  const [importing, setImporting] = useState<SearchResult | null>(null);
+  const add = (r: SearchResult) => setImporting(r);
+  const confirmImport = async (artist: string, title: string) => {
+    const r = importing!;
     try {
-      await api.download(r);
-      onToast("Aggiunto! Lo sto preparando in background.");
+      const song = await api.download(r, "", artist, title);
+      setImporting(null);
+      onToast(`Aggiunto «${song.title}» di ${song.artist}: lo sto preparando in background.`);
     } catch (err: any) {
       onToast(err.message);
     }
   };
 
   return (
-    <section className="view">
+    <section className="view view-fixed">
       <header className="view-head">
         <div>
           <button className="btn btn-ghost btn-sm back-btn" onClick={onBack}>
@@ -227,13 +277,24 @@ export function SearchView({
       <form className="toolbar" onSubmit={run}>
         <div className="field field-lg grow">
           <MonitorPlay size={22} />
-          <input autoFocus placeholder="Artista e titolo, es. «Måneskin Zitti e buoni»" value={q} onChange={(e) => setQ(e.target.value)} />
+          <input
+            autoFocus
+            placeholder="Artista e titolo, es. «Måneskin Zitti e buoni», oppure incolla il link di YouTube"
+            value={q}
+            onChange={(e) => {
+              setQ(e.target.value);
+              // link incollato: si cerca subito quel video, senza premere Cerca
+              const id = youtubeId(e.target.value);
+              if (id && id !== youtubeId(q)) run(undefined, e.target.value);
+            }}
+          />
         </div>
         <button className="btn btn-primary btn-lg" disabled={busy || !q.trim()}>
           {busy ? <Loader2 size={18} className="spin" /> : <Search size={18} />} Cerca
         </button>
       </form>
 
+      <div className="view-scroll">
       {results === null ? (
         <div className="empty">
           <div className="empty-icon">
@@ -241,6 +302,7 @@ export function SearchView({
           </div>
           <h3>Trova la tua canzone</h3>
           <p>Suggerimento: Aggiungi video-clip che NON CONTENGONO IL TESTO DELLA CANZONE e se possibile ORIGINALI.</p>
+          <p>Hai già il video? Incolla il suo link di YouTube nel campo di ricerca.</p>
         </div>
       ) : results.length === 0 ? (
         <div className="empty">
@@ -252,9 +314,18 @@ export function SearchView({
             const s = byId.get(r.youtube_id);
             return (
               <li key={r.youtube_id} className="song-row">
-                <div className="cover song-cover">
+                {/* la copertina apre il video su YouTube, per controllarlo prima di aggiungerlo */}
+                <button
+                  type="button"
+                  className="cover song-cover yt-preview"
+                  title="Guarda il video su YouTube"
+                  onClick={() => openExternal(r.url)}
+                >
                   <img src={r.thumbnail} alt="" loading="lazy" />
-                </div>
+                  <span className="yt-play">
+                    <Play size={18} fill="currentColor" />
+                  </span>
+                </button>
                 <div className="song-main">
                   <div className="song-title full-title">{r.title}</div>
                   <div className="song-sub">
@@ -284,6 +355,15 @@ export function SearchView({
           })}
         </ul>
       )}
+      {results && results.length > 0 && search.canMore && (
+        <div className="load-more">
+          <button className="btn btn-ghost" onClick={search.loadMore} disabled={search.loadingMore}>
+            {search.loadingMore ? <Loader2 size={16} className="spin" /> : <ChevronDown size={16} />} Carica altri risultati
+          </button>
+        </div>
+      )}
+      </div>
+      {importing && <ImportDialog result={importing} onCancel={() => setImporting(null)} onConfirm={confirmImport} />}
     </section>
   );
 }

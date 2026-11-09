@@ -1,0 +1,87 @@
+"""Lettura dei testi e allineamento delle parole (senza Whisper né rete)."""
+
+from __future__ import annotations
+
+import pytest
+
+from singitnow.lyrics import Line, Word, _distribute, _norm, align, parse_lrc, parse_plain
+
+
+def test_parse_lrc_tempi_ripetuti_e_ordine():
+    lrc = "[ar:Qualcuno]\n[00:20.50]Seconda riga\n[00:05.00][01:00.25]Ritornello qui\n[00:30.00]\n"
+    lines = parse_lrc(lrc)
+    assert [(l.lrc_time, l.text) for l in lines] == [
+        (5.0, "Ritornello qui"),
+        (20.5, "Seconda riga"),
+        (60.25, "Ritornello qui"),
+    ]
+
+
+def test_parse_lrc_centesimi_e_millesimi():
+    lines = parse_lrc("[00:01.5]a\n[00:02.123]b")
+    assert [l.lrc_time for l in lines] == [pytest.approx(1.5), pytest.approx(2.123)]
+
+
+def test_parse_plain_salta_le_righe_vuote():
+    lines = parse_plain("uno due\n\n   \ntre")
+    assert [l.text for l in lines] == ["uno due", "tre"]
+    assert all(l.lrc_time is None for l in lines)
+
+
+def test_norm_ignora_accenti_e_punteggiatura():
+    assert _norm("Perché,") == "perche"
+    assert _norm("L'AMORE!") == "lamore"
+
+
+def test_distribute_proporzionale_e_contiguo():
+    words = [Word("a"), Word("lunghissima")]
+    _distribute(words, 10.0, 14.0)
+    assert words[0].start == 10.0
+    assert words[0].end == words[1].start
+    assert words[1].end == pytest.approx(14.0)
+    assert (words[1].end - words[1].start) > (words[0].end - words[0].start)
+
+
+def test_distribute_durata_minima():
+    words = [Word("a"), Word("b"), Word("c")]
+    _distribute(words, 5.0, 5.0)  # intervallo nullo: almeno 0,2 s a parola
+    assert words[-1].end == pytest.approx(5.6)
+
+
+def sung(*items: tuple[str, float]) -> list[Word]:
+    return [Word(t, s, s + 0.4) for t, s in items]
+
+
+def test_align_senza_tempi_abbina_le_parole_nell_ordine():
+    lines = parse_plain("Ciao amore mio\nresta qui")
+    voice = sung(("ciao", 1.0), ("amore", 1.5), ("mio", 2.0), ("resta", 4.0), ("qui", 4.5))
+    ratio = align(lines, voice, duration=10.0)
+    assert ratio == 1.0
+    assert [w.start for l in lines for w in l.words] == [1.0, 1.5, 2.0, 4.0, 4.5]
+
+
+def test_align_parola_non_cantata_viene_interpolata():
+    lines = parse_plain("uno due tre")
+    voice = sung(("uno", 1.0), ("tre", 3.0))
+    ratio = align(lines, voice, duration=10.0)
+    assert ratio == pytest.approx(2 / 3)
+    uno, due, tre = lines[0].words
+    assert uno.start == 1.0 and tre.start == 3.0
+    assert uno.start < due.start < tre.start  # tempo ricavato fra le parole vicine
+
+
+def test_align_con_tempi_lrc_segue_lo_scarto_del_video():
+    """Il video ha 10 s di intro in più della versione di LRCLIB: le righe si spostano tutte."""
+    lines = [
+        Line([Word("primo"), Word("verso"), Word("qui")], lrc_time=5.0),
+        Line([Word("secondo"), Word("verso"), Word("ancora")], lrc_time=10.0),
+        Line([Word("terzo"), Word("verso"), Word("finale")], lrc_time=15.0),
+    ]
+    voice = sung(
+        ("primo", 15.0), ("verso", 15.5), ("qui", 16.0),
+        ("secondo", 20.0), ("verso", 20.5), ("ancora", 21.0),
+        ("terzo", 25.0), ("verso", 25.5), ("finale", 26.0),
+    )
+    ratio = align(lines, voice, duration=40.0)
+    assert ratio > 0.9
+    assert [l.words[0].start for l in lines] == pytest.approx([15.0, 20.0, 25.0])

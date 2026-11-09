@@ -74,7 +74,7 @@ export function PhotoPicker({
             className="btn btn-ghost btn-sm danger"
             onClick={onRemove}
           >
-            <Trash2 size={16} /> Togli
+            <Trash2 size={16} /> Elimina
           </button>
         )}
       </div>

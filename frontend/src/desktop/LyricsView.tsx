@@ -13,6 +13,7 @@ function Line({ line, t, dim }: { line: LyricLine; t: number; dim?: boolean }) {
           </span>
         );
       })}
+      {line.orig && <div className="lyric-orig">{line.orig}</div>}
     </div>
   );
 }

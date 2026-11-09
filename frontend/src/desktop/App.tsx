@@ -1,14 +1,22 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ChevronDown, ChevronUp, Library, ListMusic, Play, Smartphone, Trash2, Wifi, WifiOff } from "lucide-react";
-import { api, Entry, fmtEta, Song } from "../shared/api";
+import { ChevronDown, ChevronUp, Clock, ListMusic, Maximize, Play, Smartphone, Trash2, Wifi, WifiOff } from "lucide-react";
+import { api, Entry, fmtTime, Song, Standing } from "../shared/api";
+import { entryStarts, fmtWait, useTick } from "../shared/queue";
 import { useLive } from "../shared/live";
 import { Avatar } from "../shared/Avatar";
-import { EditDialog, SingerDialog } from "./Dialogs";
-import { Player, setFullscreen } from "./Player";
+import { EditDialog, LyricsDialog, SingerDialog } from "./Dialogs";
+import { enterFullscreen, exitFullscreen, Player, toggleFullscreen } from "./Player";
 import { RequestEvent, RequestToasts, useRequests } from "./Requests";
+import { HandoverBanner, useHandover } from "./Handover";
 import { ApplauseLayer, useApplause } from "./Applause";
 import { useJukebox } from "../shared/mode";
-import { ModeSeg } from "./ModeSeg";
+import { DjPicker, ModeSeg } from "./ModeSeg";
+import { ResultsHost, useResultsOpen, winnerJustCelebrated } from "./ResultsPanel";
+import { BackgroundMusic } from "./BackgroundMusic";
+import { Splash, useSplash } from "../shared/Splash";
+import { CompetitionSwitch, RankingCorner, RankingDialog, WinnerScreen } from "./Competition";
+import { Participants } from "./Participants";
+import { SettingsButton } from "./Settings";
 import { LibraryView, SearchView } from "./Views";
 
 type Tab = "library" | "search";
@@ -16,27 +24,76 @@ type Tab = "library" | "search";
 export function App() {
   const requests = useRequests();
   const applause = useApplause();
-  const { songs, playlist, connected } = useLive((event, data) => {
+  const { songs, playlist, connected, player } = useLive((event, data) => {
     if (event === "player_command") window.dispatchEvent(new CustomEvent("player-command", { detail: data }));
-    else if (event === "request") requests.push(data as RequestEvent);
+    // brani aggiunti dal PC stesso: l'avviso va solo sui telefoni
+    else if (event === "request") !data?.from_pc && requests.push(data as RequestEvent);
     else if (event === "applause") applause.push(data.name);
     else if (event === "show_qr") showQr(data?.seconds ?? 10);
+    else if (event === "show_wifi") showWifi(data?.seconds ?? 10);
+    else if (event === "show_ranking") showRanking(data?.seconds ?? 10);
+    else if (event === "fullscreen") enterFullscreen();
+    else if (event === "users") setUsers(Array.isArray(data) ? data : []);
+    else if (event === "user_joined" && data?.name) requests.pushJoin(data.name);
+    else if (event === "duet" && data?.kind === "accepted") requests.pushDuet(data.from, data.to, data.song ?? null);
+    // il vincitore appena festeggiato nel pannello di fine serata non si mostra due volte
+    else if (event === "competition_end" && !winnerJustCelebrated()) setWinner(data?.standings ?? null);
   });
   const [tab, setTab] = useState<Tab>("library");
   const [info, setInfo] = useState<{ remote_url: string; qr_svg: string } | null>(null);
   const [toast, setToast] = useState("");
   const [queueFor, setQueueFor] = useState<Song | null>(null);
   const [editing, setEditing] = useState<Song | null>(null);
+  const [lyricsFor, setLyricsFor] = useState<Song | null>(null);
   // QR code d'ingresso mostrato per qualche secondo nell'angolo (richiesto da un amministratore)
   const jukebox = useJukebox();
   const [qrShown, setQrShown] = useState(false);
   const qrTimer = useRef<number | undefined>(undefined);
   function showQr(seconds: number) {
     setQrShown(false); // riavvia l'animazione se arriva una nuova richiesta
+    setWifiQr(null); // un QR alla volta nello stesso angolo
+    setRankingShown(null);
     window.clearTimeout(qrTimer.current);
     requestAnimationFrame(() => setQrShown(true));
     qrTimer.current = window.setTimeout(() => setQrShown(false), seconds * 1000);
   }
+  // QR code del Wi-Fi di casa: l'evento non porta la password, il QR si chiede al server
+  const [wifiQr, setWifiQr] = useState<{ ssid: string; qr_svg: string; seconds: number } | null>(null);
+  const wifiTimer = useRef<number | undefined>(undefined);
+  function showWifi(seconds: number) {
+    api
+      .wifiQr()
+      .then((w) => {
+        setWifiQr(null); // riavvia l'animazione se arriva una nuova richiesta
+        setQrShown(false); // un QR alla volta nello stesso angolo
+        setRankingShown(null);
+        window.clearTimeout(wifiTimer.current);
+        requestAnimationFrame(() => setWifiQr({ ssid: w.ssid, qr_svg: w.qr_svg, seconds }));
+        wifiTimer.current = window.setTimeout(() => setWifiQr(null), seconds * 1000);
+      })
+      .catch(() => {});
+  }
+
+  // Competizione: classifica in tempo reale nello stesso angolo dei QR (stessa durata), schermata
+  // del vincitore a fine sessione e classifica completa dal pulsante sotto l'interruttore
+  const [rankingShown, setRankingShown] = useState<number | null>(null);
+  const rankingTimer = useRef<number | undefined>(undefined);
+  function showRanking(seconds: number) {
+    setRankingShown(null);
+    setQrShown(false);
+    setWifiQr(null);
+    window.clearTimeout(rankingTimer.current);
+    requestAnimationFrame(() => setRankingShown(seconds));
+    rankingTimer.current = window.setTimeout(() => setRankingShown(null), seconds * 1000);
+  }
+  const [winner, setWinner] = useState<Standing[] | null>(null);
+  // partecipanti collegati dal telefono (pannello sotto il QR code): all'avvio e a ogni riconnessione
+  // si chiede l'elenco, poi lo aggiorna l'evento "users"
+  const [users, setUsers] = useState<string[]>([]);
+  useEffect(() => {
+    if (connected) api.users().then((r) => setUsers(r.users)).catch(() => {});
+  }, [connected]);
+  const [rankingOpen, setRankingOpen] = useState(false);
 
   useEffect(() => {
     api.info().then(setInfo).catch(() => {});
@@ -47,7 +104,6 @@ export function App() {
     return () => clearTimeout(t);
   }, [toast]);
 
-  const processing = songs.filter((s) => !["ready", "error"].includes(s.status)).length;
 
   const safe = useCallback(async (fn: () => Promise<unknown>) => {
     try {
@@ -59,12 +115,62 @@ export function App() {
 
   const now = playlist.now_playing;
   const nowSong = now?.song?.status === "ready" ? now : null;
-  const isPlaying = !!nowSong;
-  // fine della serata (player chiuso): via lo schermo intero attivato dall'avvio automatico
+  // brano ridotto a finestrella in basso a destra (freccia in alto a sinistra nel player): anche i
+  // brani successivi restano nella finestrella finché non la si rimette a tutto schermo. Quando la
+  // musica si ferma del tutto (X, Stop, coda finita) il prossimo avvio torna a tutto schermo.
+  const [mini, setMini] = useState(false);
+  const playingNow = !!nowSong;
+  const resultsOpen = useResultsOpen();
+  const [splash, splashDone] = useSplash(); // video di avvio
+  // «Anna passa il microfono a Marco!» al cambio di cantante (Karaoke)
+  const handover = useHandover(nowSong, !jukebox);
   useEffect(() => {
-    if (!isPlaying) setFullscreen(false);
-  }, [isPlaying]);
+    if (!playingNow) setMini(false);
+    else setWinner(null); // parte una nuova sessione: via la schermata del vincitore
+  }, [playingNow]);
+  // Schermo intero in tutta l'app (si parte già a schermo intero): Esc esce, F o F11 lo rimettono.
+  // Durante un brano Esc non chiude il brano: si chiude solo con Stop o con la X.
+  useEffect(() => {
+    const onKey = (ev: KeyboardEvent) => {
+      const el = ev.target as HTMLElement;
+      const typing = el?.tagName === "TEXTAREA" || (el?.tagName === "INPUT" && (el as HTMLInputElement).type !== "range");
+      if (ev.key === "Escape") exitFullscreen();
+      else if (ev.key === "F11" || ((ev.key === "f" || ev.key === "F") && !typing && !ev.ctrlKey && !ev.altKey && !ev.metaKey)) {
+        ev.preventDefault();
+        toggleFullscreen();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
   const nextEntry = playlist.entries[0];
+  // primo brano prenotato ancora in preparazione (con lo stato aggiornato dalla libreria): se la coda
+  // finisce prima che sia pronto, la TV lo aspetta con un conto alla rovescia
+  const firstWaiting = playlist.waiting[0];
+  const waitingNext = firstWaiting
+    ? { singer: firstWaiting.singer, song: songs.find((s) => s.id === firstWaiting.song_id) ?? firstWaiting.song }
+    : undefined;
+  // modalità DJ, mix in battuta: brano successivo caricato in anticipo (fermo), brano che sfuma
+  // mentre parte il successivo, e quello entrato col mix (il suo video compare in dissolvenza)
+  const [cued, setCued] = useState<Entry | null>(null);
+  const [outgoing, setOutgoing] = useState<Entry | null>(null);
+  const [mixInId, setMixInId] = useState<string | null>(null);
+  useEffect(() => {
+    if (!nowSong) {
+      // Stop: si ferma tutto
+      setOutgoing(null);
+      setCued(null);
+    } else if (cued && nowSong.id === cued.id) {
+      setCued(null); // il brano in attesa è diventato quello in corso (stesso player)
+    } else if (cued && !outgoing && nextEntry?.id !== cued.id) {
+      setCued(null); // prima del mix il DJ ha cambiato il prossimo brano: si scarta
+    }
+  }, [nowSong, nextEntry, cued, outgoing]);
+  useTick(1000); // aggiorna i tempi di attesa della playlist
+  const starts = entryStarts(playlist, player);
+  // brani in playlist (solo quelli pronti) e durata complessiva
+  const queued = playlist.entries;
+  const totalDuration = queued.reduce((t, e) => t + (e.song?.duration ?? 0), 0);
 
   return (
     <div className="app">
@@ -75,27 +181,23 @@ export function App() {
           <span>
             Sing<span className="grad-text">IT</span>now
           </span>
+          <SettingsButton onError={setToast} />
+          <button className="icon-btn fullscreen-btn" title="Schermo intero (F)" onClick={toggleFullscreen}>
+            <Maximize size={20} />
+          </button>
         </div>
         <div className="mode-switch">
           <div className="mode-switch-label">Modalità</div>
           <ModeSeg onError={setToast} />
+          <DjPicker users={users} onError={setToast} />
+          <CompetitionSwitch onShowRanking={() => setRankingOpen(true)} />
         </div>
-        <button className="nav-item active" onClick={() => setTab("library")}>
-          <Library size={22} /> Libreria
-          {processing > 0 && <span className="nav-count">{processing}</span>}
-        </button>
+
+        {/* QR code piccolo per entrare e, sotto, chi è collegato dal telefono in questo momento;
+            lo spazio libero va in fondo, sopra lo stato della connessione */}
+        <Participants users={users} qrSvg={info?.qr_svg} />
 
         <div className="sidebar-spacer" />
-
-        {info && (
-          <div className="join-card">
-            <div className="join-title">
-              <Smartphone size={18} /> Unisciti dal telefono
-            </div>
-            <div className="qr" dangerouslySetInnerHTML={{ __html: info.qr_svg }} />
-            <div className="join-url">{info.remote_url.replace("http://", "")}</div>
-          </div>
-        )}
         <div className={`conn ${connected ? "on" : ""}`}>
           {connected ? <Wifi size={14} /> : <WifiOff size={14} />} {connected ? "Connesso" : "Riconnessione…"}
         </div>
@@ -106,6 +208,8 @@ export function App() {
         {tab === "library" ? (
           <LibraryView
             songs={songs}
+            waiting={playlist.waiting}
+            onCancelWaiting={(songId, singer) => safe(() => api.unqueueWaiting(songId, singer))}
             onPlay={(s) => safe(() => api.playSong(s.id))}
             onQueue={(s) => (jukebox ? safe(() => api.enqueue(s.id, "")) : setQueueFor(s))}
             onEdit={setEditing}
@@ -123,37 +227,60 @@ export function App() {
           <h2>
             <ListMusic size={22} /> Playlist
           </h2>
-          <span className="muted">{playlist.entries.length} in coda</span>
+          {queued.length > 0 && (
+            <span className="muted queue-summary">
+              {queued.length} {queued.length === 1 ? "brano" : "brani"} in playlist | Durata: {fmtTotal(totalDuration)}
+            </span>
+          )}
         </div>
 
-        <button
-          className="btn btn-primary btn-block"
-          disabled={!nextEntry}
-          onClick={() => safe(() => api.playEntry())}
-        >
-          <Play size={18} fill="currentColor" />
-          {nextEntry ? `Avvia: ${nextEntry.singer || nextEntry.song?.title}` : "Coda vuota"}
-        </button>
+        {nextEntry && (
+          <button className="btn btn-primary btn-block" onClick={() => safe(() => api.playEntry())}>
+            <Play size={18} fill="currentColor" />
+            Avvia playlist
+          </button>
+        )}
 
         <ol className="queue-list">
           {playlist.entries.map((e: Entry, i) => (
             <li key={e.id} className="queue-item">
               <div className="queue-pos">{i + 1}</div>
-              <div className="cover" style={{ width: 54, height: 54 }}>
-                <img src={e.song?.thumbnail_url} alt="" />
-              </div>
+              {/* copertina del disco come sfondo della card, scurita per leggere bene il testo */}
+              {e.song?.thumbnail_url && <img className="queue-bg" src={e.song.thumbnail_url} alt="" />}
+              {/* tutto per intero (titolo e artista vanno a capo); chi l'ha richiesto per ultimo */}
               <div className="queue-main">
+                <div className="queue-song">{e.song?.title}</div>
+                {e.song?.artist && <div className="queue-artist">{e.song.artist}</div>}
+                <div className="queue-meta">
+                  <span>
+                    <Clock size={13} /> {fmtTime(e.song?.duration ?? 0)}
+                  </span>
+                  <span className="queue-wait">{i === 0 && !now ? "è il prossimo" : `fra ${fmtWait(starts[i]!)}`}</span>
+                </div>
                 {e.singer && (
                   <div className="queue-singer">
                     <Avatar name={e.singer} className="xs" />
-                    <span className="ellipsis">{e.singer}</span>
+                    <span>{e.singer}</span>
+                    {e.partner && !jukebox && (
+                      <>
+                        <span className="queue-amp">&</span>
+                        <Avatar name={e.partner} className="xs" />
+                        <span>{e.partner}</span>
+                        <span className="queue-duet">Duetto</span>
+                      </>
+                    )}
                   </div>
                 )}
-                <div className="queue-song ellipsis">{e.song?.title}</div>
               </div>
               <div className="queue-actions">
                 <button className="icon-btn" title="Su" disabled={i === 0} onClick={() => safe(() => api.move(e.id, -1))}>
                   <ChevronUp size={16} />
+                </button>
+                <button className="icon-btn" title="Avvia ora" onClick={() => safe(() => api.playEntry(e.id))}>
+                  <Play size={16} />
+                </button>
+                <button className="icon-btn danger" title="Rimuovi" onClick={() => safe(() => api.unqueue(e.id))}>
+                  <Trash2 size={16} />
                 </button>
                 <button
                   className="icon-btn"
@@ -164,51 +291,61 @@ export function App() {
                   <ChevronDown size={16} />
                 </button>
               </div>
-              <div className="queue-actions">
-                <button className="icon-btn" title="Avvia ora" onClick={() => safe(() => api.playEntry(e.id))}>
-                  <Play size={16} />
-                </button>
-                <button className="icon-btn danger" title="Rimuovi" onClick={() => safe(() => api.unqueue(e.id))}>
-                  <Trash2 size={16} />
-                </button>
-              </div>
             </li>
           ))}
-          {playlist.waiting.map((w, i) => (
-            <li key={`w${i}`} className="queue-item waiting">
-              <div className="queue-pos">…</div>
-              <div className="cover" style={{ width: 54, height: 54 }}>
-                <img src={w.song?.thumbnail_url} alt="" />
-              </div>
-              <div className="queue-main">
-                <div className="queue-singer">
-                  <Avatar name={w.singer} className="xs" />
-                  <span className="ellipsis">{w.singer}</span>
-                </div>
-                <div className="queue-song ellipsis">
-                  {w.song?.title} · <span className="muted">in preparazione {Math.round((w.song?.progress ?? 0) * 100)}%{fmtEta(w.song) && ` · ${fmtEta(w.song)}`}</span>
-                </div>
-              </div>
-            </li>
-          ))}
+          {/* i brani ancora in preparazione non si vedono: entrano in playlist quando sono pronti */}
         </ol>
-        {playlist.entries.length === 0 && playlist.waiting.length === 0 && (
+        {playlist.entries.length === 0 && (
           <div className="queue-empty">
-            Nessuno in coda.
-            <br />
-            Inquadrate il QR code con il telefono per prenotare una canzone!
+            <img src="/empty-playlist.png" alt="" />
+            <p>La playlist è vuota, apri l'app e clicca su "LIBRERIA" per aggiungere un brano.</p>
           </div>
         )}
       </aside>
 
-      {nowSong && (
-        <Player
-          key={nowSong.id}
-          entry={nowSong}
-          next={nextEntry}
-          onClose={() => safe(() => api.stop())}
-          onNext={() => safe(() => api.playEntry().catch(() => api.stop()))}
-        />
+      {/* in un array con le chiavi: durante il mix il brano in uscita resta lo stesso player
+          (non riparte) mentre accanto si monta quello nuovo */}
+      {[
+        outgoing && nowSong && outgoing.id !== nowSong.id ? outgoing : null,
+        nowSong,
+        cued && nowSong && cued.id !== nowSong.id && cued.id !== outgoing?.id ? cued : null,
+      ].map((e) =>
+        !e ? null : e.id === outgoing?.id ? (
+          <Player
+            key={e.id}
+            entry={e}
+            next={undefined}
+            outgoing
+            onGone={() => setOutgoing(null)}
+            onClose={() => setOutgoing(null)}
+            onNext={() => setOutgoing(null)}
+            mini={mini}
+          />
+        ) : e.id === cued?.id && e.id !== nowSong?.id ? (
+          // caricato e fermo, nascosto: lo fa partire il brano in corso sul battito giusto
+          <Player key={e.id} entry={e} next={undefined} cued onClose={() => {}} onNext={() => {}} mini={mini} />
+        ) : (
+          <Player
+            key={e.id}
+            entry={e}
+            next={nextEntry}
+            waitingNext={waitingNext}
+            mixIn={e.id === mixInId}
+            onClose={() => safe(() => api.stop())}
+            onNext={() => safe(() => api.playEntry().catch(() => api.stop()))}
+            onPrepareMix={() => nextEntry && setCued(nextEntry)}
+            onMixStart={() => {
+              // il successivo si sente: il server lo mette in riproduzione, questo sfuma
+              const n = cued ?? nextEntry;
+              setOutgoing(e);
+              setMixInId(n?.id ?? null);
+              safe(() => (n ? api.playEntry(n.id) : api.playEntry()).catch(() => api.stop()));
+            }}
+            mini={mini}
+            onMinimize={() => setMini(true)}
+            onExpand={() => setMini(false)}
+          />
+        ),
       )}
 
       {queueFor && (
@@ -222,16 +359,63 @@ export function App() {
           }}
         />
       )}
-      {editing && <EditDialog song={editing} onClose={() => setEditing(null)} onToast={setToast} />}
-      <RequestToasts items={requests.items} />
+      {editing && (
+        <EditDialog
+          song={editing}
+          onClose={() => setEditing(null)}
+          onToast={setToast}
+          onEditLyrics={() => (setLyricsFor(editing), setEditing(null))}
+        />
+      )}
+      {lyricsFor && <LyricsDialog song={lyricsFor} onClose={() => setLyricsFor(null)} onToast={setToast} />}
+      {/* nel pannello principale in basso a destra; con un brano in corso (anche nella finestrella,
+          che occupa l'angolo in basso) in alto a destra */}
+      <RequestToasts items={requests.items} bottom={!nowSong} />
+      <HandoverBanner pass={handover} />
+      <ResultsHost />
+      {/* sottofondo della schermata principale: sfuma quando parte la playlist */}
+      <BackgroundMusic active={!splash && !now && !resultsOpen && !winner} />
+      {splash && <Splash onDone={splashDone} />}
+      {rankingShown !== null && <RankingCorner seconds={rankingShown} onClose={() => setRankingShown(null)} />}
+      {winner && !nowSong && <WinnerScreen standings={winner} onClose={() => setWinner(null)} />}
+      {rankingOpen && <RankingDialog onClose={() => setRankingOpen(false)} />}
       {qrShown && info && (
-        <div className="qr-corner" aria-hidden>
-          <div className="qr-corner-code" dangerouslySetInnerHTML={{ __html: info.qr_svg }} />
-          <div className="qr-corner-text">Entra anche tu!</div>
+        // stessa card (e misura) del QR del Wi-Fi
+        <div className="wifi-corner qr-corner" title="Clic per chiudere" onClick={() => setQrShown(false)}>
+          <div className="wifi-corner-head">
+            <Smartphone size={18} /> App
+          </div>
+          <div className="wifi-corner-code" dangerouslySetInnerHTML={{ __html: info.qr_svg }} />
+          <div className="wifi-corner-ssid">Entra anche tu!</div>
+          <div className="wifi-corner-hint">Inquadra con la fotocamera per partecipare</div>
+        </div>
+      )}
+      {wifiQr && (
+        <div
+          className="wifi-corner"
+          title="Clic per chiudere"
+          style={{ "--wifi-seconds": `${wifiQr.seconds}s` } as React.CSSProperties}
+          onClick={() => setWifiQr(null)}
+        >
+          <div className="wifi-corner-head">
+            <Wifi size={18} /> Wi-Fi
+          </div>
+          <div className="wifi-corner-code" dangerouslySetInnerHTML={{ __html: wifiQr.qr_svg }} />
+          <div className="wifi-corner-ssid">{wifiQr.ssid}</div>
+          <div className="wifi-corner-hint">Inquadra con la fotocamera per collegarti</div>
         </div>
       )}
       {nowSong && !jukebox && <ApplauseLayer bubbles={applause.bubbles} />}
       {toast && <div className="toast">{toast}</div>}
     </div>
   );
+}
+
+/** Durata totale della playlist: m:ss, oppure h:mm:ss da un'ora in su. */
+function fmtTotal(sec: number): string {
+  const t = Math.max(0, Math.round(sec));
+  const h = Math.floor(t / 3600);
+  const m = Math.floor((t % 3600) / 60);
+  const s = (t % 60).toString().padStart(2, "0");
+  return h ? `${h}:${m.toString().padStart(2, "0")}:${s}` : `${m}:${s}`;
 }

@@ -321,6 +321,9 @@ select {
   box-shadow: var(--shadow);
   font-weight: 500;
   animation: toast-in 0.25s ease;
+  /* largo quanto il testo (con left: 50% il browser gli lascerebbe solo mezzo schermo e andrebbe a
+     capo), senza uscire dallo schermo; i messaggi lunghi vanno comunque a capo */
+  width: max-content;
   max-width: calc(100vw - 32px);
 }
 .toast.error {
@@ -422,4 +425,44 @@ input[type="range"]::-webkit-slider-thumb {
   text-overflow: clip;
   overflow-wrap: anywhere;
   -webkit-line-clamp: unset;
+}
+
+/* occhio per mostrare/nascondere la password (PasswordInput) */
+.pw-eye {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  margin-right: -8px;
+  padding: 0;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-3);
+  cursor: pointer;
+}
+.pw-eye:hover,
+.pw-eye[aria-pressed="true"] {
+  color: var(--text);
+}
+
+/* video di avvio a schermo intero, sopra a tutto */
+.splash {
+  position: fixed;
+  inset: 0;
+  z-index: 10000;
+  background: #0b0b14;
+  cursor: pointer;
+}
+.splash video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+  background: #0b0b14;
+  opacity: 0;
+}
+.splash video.on {
+  opacity: 1;
 }

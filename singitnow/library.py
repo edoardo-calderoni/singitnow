@@ -41,6 +41,7 @@ class Song:
     error: str = ""
     lyrics_source: str = ""
     language: str = ""
+    confirmed: bool = False  # artista e titolo confermati da chi l'ha importato: il download non li cambia
     created_at: float = field(default_factory=time.time)
 
     @property
@@ -65,6 +66,10 @@ class Song:
                 "vocals": f"{base}/vocals.m4a",
                 "lyrics": f"/api/songs/{self.id}/lyrics",
             }
+            if (self.dir / "pitch.json").exists():  # note della melodia (barre dell'intonazione)
+                d["media"]["pitch"] = f"/api/songs/{self.id}/pitch"
+            if (self.dir / "beats.json").exists():  # griglia del ritmo (mix in battuta in modalità DJ)
+                d["media"]["beats"] = f"/api/songs/{self.id}/beats"
         return d
 
 
@@ -73,8 +78,47 @@ class Library:
         self._lock = threading.RLock()
         self._songs: dict[str, Song] = {}
 
+    # ------------------------------------------------------------ brani scartati alla chiusura
+    @staticmethod
+    def _discard_file() -> Path:
+        return config.DATA_DIR / "discard.json"
+
+    def mark_discarded(self, song_ids: list[str]) -> None:
+        """App chiusa durante l'importazione (confermato dall'utente): quei brani vanno cancellati del
+        tutto. Si annotano, così i file rimasti (ancora aperti mentre l'app si chiude) spariscono
+        al prossimo avvio invece di far ripartire l'importazione."""
+        path = self._discard_file()
+        try:
+            old = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            old = []
+        path.write_text(json.dumps(sorted(set(old) | set(song_ids))), encoding="utf-8")
+
+    def _purge_discarded(self) -> None:
+        path = self._discard_file()
+        try:
+            ids = json.loads(path.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            return
+        left = []
+        for sid in ids:
+            for d in (config.LIBRARY_DIR / sid, config.WORK_DIR / sid):
+                shutil.rmtree(d, ignore_errors=True)
+            if (config.LIBRARY_DIR / sid).exists():
+                left.append(sid)  # ancora bloccato: si riprova al prossimo avvio
+        if left:
+            path.write_text(json.dumps(left), encoding="utf-8")
+        else:
+            path.unlink(missing_ok=True)
+
+    def discard(self, song_id: str) -> None:
+        """Cancella tutto ciò che è stato salvato o generato per un brano (anche i file di lavoro)."""
+        self.remove(song_id)
+        shutil.rmtree(config.WORK_DIR / song_id, ignore_errors=True)
+
     def load(self) -> None:
         config.ensure_dirs()
+        self._purge_discarded()  # residui dei brani scartati chiudendo l'app durante l'importazione
         with self._lock:
             self._songs.clear()
             for meta in config.LIBRARY_DIR.glob("*/song.json"):

@@ -1,87 +1,63 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Clock, Mic, Mic2, MicOff, Music, Pause, Play, Plus, QrCode, SkipForward, Sparkles, Square, Volume2, VolumeX } from "lucide-react";
+import { createPortal } from "react-dom";
+import { Clock, Headphones, Mic, Mic2, MicOff, Minus, Music, Pause, Play, Plus, RotateCcw, SkipForward, Sparkles, Square, Trophy, Users, Volume2, VolumeX, Wand2 } from "lucide-react";
 import { api, LyricLine, PlaylistState } from "../shared/api";
 import { LivePlayer, playerTime } from "../shared/live";
-import { Mode, useJukebox, useMode } from "../shared/mode";
+import { Mode, useDj, useJukebox, useMode } from "../shared/mode";
 import { activeIndex, switchTimes, wordFill } from "../shared/lyrics";
+import { currentRemaining, entryStarts, fmtClock, fmtWait, queueTimeline, singersOf, singsIn, useTick } from "../shared/queue";
+import { micLabel, useMics, useMicSetter } from "../shared/mics";
+import { useCompetition } from "../shared/competition";
+import { correctionText, strengthLabel, useVoice, useVoiceSetter } from "../shared/voice";
 
-/** Pausa stimata tra un brano e il successivo (caricamento audio sulla TV). */
-const GAP = 6;
-
-/** Ridisegna il componente ogni `ms` millisecondi (per i conti alla rovescia). */
-export function useTick(ms = 1000) {
-  const [, set] = useState(0);
-  useEffect(() => {
-    const id = window.setInterval(() => set((n) => n + 1), ms);
-    return () => window.clearInterval(id);
-  }, [ms]);
-}
-
-/** Secondi che mancano alla fine del brano in corso sulla TV. */
-function currentRemaining(playlist: PlaylistState, player: LivePlayer): number {
-  const now = playlist.now_playing;
-  if (!now?.song) return 0;
-  if (player && player.state.song_id === now.song.id) {
-    return Math.max(0, (player.state.duration || now.song.duration) - playerTime(player));
-  }
-  return now.song.duration; // il player non ha ancora comunicato: brano appena partito
-}
-
-/**
- * Tra quanti secondi inizierà ogni brano in coda (stessa posizione di playlist.entries).
- * Assume che la coda venga suonata in ordine, una canzone dopo l'altra.
- */
-export function entryStarts(playlist: PlaylistState, player: LivePlayer): number[] {
-  let t = playlist.now_playing ? currentRemaining(playlist, player) + GAP : 0;
-  return playlist.entries.map((e) => {
-    const start = t;
-    t += (e.song?.duration ?? 0) + GAP;
-    return start;
-  });
-}
+export { entryStarts, fmtWait, useTick } from "../shared/queue";
 
 export type Turn =
   | { kind: "stage" }
   | { kind: "next" }
   | { kind: "wait"; seconds: number; ahead: number }
-  | { kind: "preparing"; seconds: number; ahead: number };
+  | { kind: "preparing"; seconds: number; ahead: number; first: boolean };
 
-/** Quando tocca a `name`: il primo dei suoi brani in coda (o in preparazione). */
+/** Quando tocca a `name`: il primo dei suoi brani in coda (o in preparazione), duetti compresi. */
 export function turnFor(name: string, playlist: PlaylistState, player: LivePlayer): Turn | null {
-  if (playlist.now_playing?.singer === name) return { kind: "stage" };
+  if (singsIn(playlist.now_playing, name)) return { kind: "stage" };
   const starts = entryStarts(playlist, player);
-  const idx = playlist.entries.findIndex((e) => e.singer === name);
+  const idx = playlist.entries.findIndex((e) => singsIn(e, name));
   if (idx >= 0) {
     if (idx === 0 && !playlist.now_playing) return { kind: "next" };
     return { kind: "wait", seconds: starts[idx]!, ahead: idx + (playlist.now_playing ? 1 : 0) };
   }
-  const w = playlist.waiting.find((x) => x.singer === name);
-  if (w) {
-    // entrerà in coda in fondo, quando l'elaborazione sarà finita
-    const last = playlist.entries.at(-1);
-    const endOfQueue = last
-      ? starts.at(-1)! + (last.song?.duration ?? 0) + GAP
-      : playlist.now_playing
-        ? currentRemaining(playlist, player) + GAP
-        : 0;
+  const wi = playlist.waiting.findIndex((x) => x.singer === name);
+  if (wi >= 0) {
+    // in preparazione: riprende il suo turno se sarà pronto in tempo, altrimenti entra quando è pronto
+    const tl = queueTimeline(playlist, player);
+    const mine = tl.waiting[wi];
+    const before =
+      tl.entries.filter((s) => s < mine).length + tl.waiting.filter((s, i) => i !== wi && s < mine).length;
     return {
       kind: "preparing",
-      seconds: Math.max(endOfQueue, w.song?.eta ?? 0),
-      ahead: playlist.entries.length + (playlist.now_playing ? 1 : 0),
+      seconds: mine,
+      ahead: before + (playlist.now_playing ? 1 : 0),
+      first: before === 0,
     };
   }
   return null;
 }
 
-export function fmtWait(s: number): string {
-  if (s < 60) return "meno di un minuto";
-  const m = Math.round(s / 60);
-  if (m < 60) return `${m} min`;
-  return `${Math.floor(m / 60)} h ${m % 60} min`;
+
+/** «2 brani prima del tuo · il tuo brano è in preparazione» (senza mai «0 brani»). */
+function waitDetails(turn: Turn): string {
+  const parts: string[] = [];
+  if ((turn.kind === "wait" || turn.kind === "preparing") && turn.ahead > 0)
+    parts.push(turn.ahead === 1 ? "1 brano prima del tuo" : `${turn.ahead} brani prima del tuo`);
+  if (turn.kind === "preparing") parts.push("il tuo brano è in preparazione");
+  const s = parts.join(" · ");
+  return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
-export function TurnBanner({ turn, onAdd }: { turn: Turn | null; onAdd: () => void }) {
+export function TurnBanner({ turn, onAdd, onLyrics }: { turn: Turn | null; onAdd: () => void; onLyrics?: () => void }) {
   const jukebox = useJukebox();
+  useTick(1000); // il conto alla rovescia scorre
   if (!turn) return null;
   let title: React.ReactNode;
   let sub: string;
@@ -89,7 +65,7 @@ export function TurnBanner({ turn, onAdd }: { turn: Turn | null; onAdd: () => vo
     // Jukebox: nessun turno da cantare, solo quando parte il proprio brano
     if (turn.kind === "stage") {
       title = "Sta suonando il tuo brano 🎵";
-      sub = "Segui il testo nella scheda Testo";
+      sub = "Tocca qui per vedere il testo";
     } else if (turn.kind === "next") {
       title = "Il tuo brano è il prossimo!";
       sub = "Parte appena finisce quello in corso";
@@ -99,36 +75,52 @@ export function TurnBanner({ turn, onAdd }: { turn: Turn | null; onAdd: () => vo
           Il tuo brano partirà fra <span className="grad-text">{fmtWait(turn.seconds)}</span>
         </>
       );
-      sub =
-        (turn.ahead === 1 ? "1 brano prima del tuo" : `${turn.ahead} brani prima del tuo`) +
-        (turn.kind === "preparing" ? " · il tuo brano è in preparazione" : "");
+      sub = waitDetails(turn);
     }
   } else if (turn.kind === "stage") {
-    title = "È il tuo turno: sei sul palco! 🎤";
-    sub = "Guarda il testo nella scheda Testo";
+    title = "È il tuo turno: sei sul palco!";
+    sub = "Tocca qui per vedere il testo";
   } else if (turn.kind === "next") {
     title = "Sei il prossimo!";
     sub = "Preparati, tocca a te appena parte la musica";
-  } else {
+  } else if (turn.kind === "preparing" && turn.first) {
+    // il suo brano è il primo: conto alla rovescia preciso, preparazione compresa
     title = (
       <>
-        Il tuo turno sarà fra <span className="grad-text">{fmtWait(turn.seconds)}</span>
+        Preparati a salire sul palco, il tuo brano è il prossimo fra:{" "}
+        <span className="grad-text m-turn-clock">{fmtClock(turn.seconds)}</span>
       </>
     );
-    sub =
-      (turn.ahead === 1 ? "1 brano prima del tuo" : `${turn.ahead} brani prima del tuo`) +
-      (turn.kind === "preparing" ? " · il tuo brano è in preparazione" : "");
+    sub = waitDetails(turn);
+  } else {
+    // in coda (o in preparazione con altri brani prima): conto alla rovescia in tempo reale
+    title = (
+      <>
+        Salirai sul palco fra: <span className="grad-text m-turn-clock">{fmtClock(turn.seconds)}</span>
+      </>
+    );
+    sub = waitDetails(turn);
   }
+  // sul palco: tutta la scheda porta al testo; sul palco, da prossimo e con «Preparati a salire sul
+  // palco» niente "+" per aggiungere altri brani
+  const stage = turn.kind === "stage";
+  const showAdd = !stage && turn.kind !== "next" && !(turn.kind === "preparing" && turn.first);
   return (
-    <div className={`m-turn ${turn.kind}`}>
-      <div className="m-turn-icon">{turn.kind === "stage" ? <Mic2 size={22} /> : turn.kind === "next" ? <Sparkles size={22} /> : <Clock size={22} />}</div>
+    <div
+      className={`m-turn ${turn.kind} ${stage && onLyrics ? "clickable" : ""}`}
+      onClick={stage ? onLyrics : undefined}
+      role={stage && onLyrics ? "button" : undefined}
+    >
+      <div className="m-turn-icon">{stage ? <Mic2 size={22} /> : turn.kind === "next" ? <Sparkles size={22} /> : <Clock size={22} />}</div>
       <div className="m-turn-body">
         <div className="m-turn-title">{title}</div>
         <div className="m-turn-sub">{sub}</div>
       </div>
-      <button className="btn btn-ghost btn-sm" onClick={onAdd} title="Aggiungi un altro brano">
-        <Plus size={16} />
-      </button>
+      {showAdd && (
+        <button className="btn btn-ghost btn-sm" onClick={onAdd} title="Aggiungi un altro brano">
+          <Plus size={16} />
+        </button>
+      )}
     </div>
   );
 }
@@ -136,12 +128,10 @@ export function TurnBanner({ turn, onAdd }: { turn: Turn | null; onAdd: () => vo
 // ------------------------------------------------------------------ testo in tempo reale
 export function LyricsTab({
   name,
-  isAdmin,
   playlist,
   player,
 }: {
   name: string;
-  isAdmin: boolean;
   playlist: PlaylistState;
   player: LivePlayer;
 }) {
@@ -220,6 +210,11 @@ export function LyricsTab({
   }
   return (
     <div className="m-lyrics-wrap">
+      {/* copertina del disco come sfondo: sfocata e scurita, il testo resta leggibile */}
+      <div className="m-lyrics-bg" aria-hidden key={now.song.id}>
+        <div className="m-lyrics-bg-glow" style={{ backgroundImage: `url("${now.song.cover_url || now.song.thumbnail_url}")` }} />
+        <img className="m-lyrics-bg-art" src={now.song.cover_url || now.song.thumbnail_url} alt="" />
+      </div>
       <div className="m-lyrics-head">
         <img src={now.song.thumbnail_url} alt="" />
         <div className="ellipsis">
@@ -229,14 +224,13 @@ export function LyricsTab({
             {now.singer && (
               <>
                 {" "}
-                · {jukebox ? "aggiunto da" : "canta"} <b>{now.singer}</b>
+                · {jukebox ? "aggiunto da" : now.partner ? "duetto" : "canta"} <b>{jukebox ? now.singer : singersOf(now)}</b>
               </>
             )}
           </div>
         </div>
       </div>
-      {isAdmin && <AdminControls name={name} player={player} compact />}
-      {now.singer !== name && !jukebox && <ApplauseButton name={name} floating />}
+      {!singsIn(now, name) && !jukebox && <ApplauseButton name={name} floating />}
       {lines === null ? (
         <div className="empty">
           <p>Carico il testo…</p>
@@ -257,6 +251,7 @@ export function LyricsTab({
                     </span>
                   ))
                 : line.text}
+              {line.orig && <span className="m-lyric-orig">{line.orig}</span>}
             </p>
           ))}
         </div>
@@ -271,6 +266,214 @@ export function LyricsTab({
  * Durante il trascinamento invia al massimo un comando ogni 120 ms; il valore mostrato
  * torna a seguire la TV poco dopo che il dito si è fermato.
  */
+/**
+ * Amministratori: volume e muto dei microfoni con cui si canta (uno o due), regolati sul PC.
+ * Non compare se il PC non ha microfoni collegati.
+ */
+export function MicSliders({ compact }: { compact?: boolean }) {
+  const mics = useMics();
+  const [error, setError] = useState("");
+  useEffect(() => {
+    if (!error) return;
+    const id = window.setTimeout(() => setError(""), 4000);
+    return () => window.clearTimeout(id);
+  }, [error]);
+  const setMic = useMicSetter(setError);
+  if (!mics?.length) return null;
+  return (
+    <>
+      {mics.map((m) => (
+        <div className={`m-vol m-mic ${compact ? "compact" : ""} ${m.muted ? "muted" : ""}`} key={m.index}>
+          <button
+            className={`icon-btn ${m.muted ? "danger" : ""}`}
+            onClick={() => setMic(m.index, { muted: !m.muted })}
+            title={m.muted ? "Riattiva il microfono" : "Silenzia il microfono"}
+          >
+            {m.muted ? <MicOff size={18} /> : <Mic2 size={18} />}
+          </button>
+          <div className="m-vol-main">
+            <div className="m-vol-label">
+              <span>{micLabel(m, mics.length)}</span>
+              <b>{m.muted ? "Muto" : `${Math.round(m.volume * 100)}%`}</b>
+            </div>
+            <input
+              type="range"
+              min={0}
+              max={1}
+              step={0.01}
+              value={m.volume}
+              disabled={m.muted}
+              aria-label={`Volume ${micLabel(m, mics.length).toLowerCase()}`}
+              style={{ ["--val" as string]: `${m.volume * 100}%` }}
+              onChange={(e) => setMic(m.index, { volume: parseFloat(e.target.value) })}
+            />
+            {error && m.index === 0 && <div className="m-vol-err">{error}</div>}
+          </div>
+        </div>
+      ))}
+    </>
+  );
+}
+
+/**
+ * Scheda «Competizione» nei Settaggi: interruttore (come sul PC) e pulsante per mostrare sulla TV
+ * la classifica in tempo reale per qualche secondo. Solo in Karaoke (in Jukebox non si canta).
+ */
+export function CompetitionCard({ inline }: { inline?: boolean }) {
+  const comp = useCompetition();
+  const jukebox = useJukebox();
+  const [msg, setMsg] = useState("");
+  useEffect(() => {
+    if (!msg) return;
+    const id = window.setTimeout(() => setMsg(""), 2500);
+    return () => window.clearTimeout(id);
+  }, [msg]);
+  // es. «Nessun microfono rilevato…»: avviso in primo piano, l'interruttore resta spento
+  const [notice, setNotice] = useState("");
+  if (jukebox) return null;
+  return (
+    <div className={inline ? "m-comp m-comp-inline" : "m-mode m-comp"}>
+      {notice &&
+        createPortal(
+          <div className="m-sheet" onClick={() => setNotice("")}>
+            <div className="m-sheet-card m-notice" role="alertdialog" onClick={(e) => e.stopPropagation()}>
+              <div className="m-notice-icon">{/microfono/i.test(notice) ? <MicOff size={26} /> : <Users size={26} />}</div>
+              <p>{notice}</p>
+              <button type="button" className="btn btn-primary btn-wide" onClick={() => setNotice("")}>
+                Ok
+              </button>
+            </div>
+          </div>,
+          document.body,
+        )}
+      <div className="m-mode-label">Competizione</div>
+      <label className="m-switch">
+        <input
+          type="checkbox"
+          checked={comp.enabled}
+          onChange={(e) =>
+            api
+              .setCompetition(e.target.checked, localStorage.getItem("sin.name") ?? "")
+              .catch((err) => setNotice(err.message))
+          }
+        />
+        <span className="m-switch-track" aria-hidden>
+          <span className="m-switch-thumb" />
+        </span>
+        <span className="m-switch-label">{comp.enabled ? "Attiva" : "Spenta"}</span>
+      </label>
+      <div className="m-mode-hint">
+        {comp.enabled
+          ? "Conta la media dei voti d'intonazione di ciascuno; a fine playlist si premia il vincitore"
+          : "Attivala per una classifica fra chi canta in questa sessione"}
+      </div>
+      {comp.enabled && (
+        <button
+          type="button"
+          className="btn btn-primary btn-sm m-wifi-show"
+          onClick={() =>
+            api
+              .showRanking()
+              .then(() => setMsg("Classifica sulla TV per 10 secondi"))
+              .catch((e) => setMsg(e.message))
+          }
+        >
+          <Trophy size={15} /> Mostra la classifica sulla TV
+        </button>
+      )}
+      {msg && <div className="m-admin-msg">{msg}</div>}
+    </div>
+  );
+}
+
+/**
+ * Amministratori: autotune della voce (con la sua intensità). Con `full` anche la scelta di chi
+ * gestisce la voce dei microfoni (Windows o SingITnow) e gli avvisi.
+ */
+export function AutotuneControl({ compact, full }: { compact?: boolean; full?: boolean }) {
+  const voice = useVoice();
+  const mics = useMics();
+  const [error, setError] = useState("");
+  useEffect(() => {
+    if (!error) return;
+    const id = window.setTimeout(() => setError(""), 4000);
+    return () => window.clearTimeout(id);
+  }, [error]);
+  const setVoice = useVoiceSetter(setError);
+  const competition = useCompetition().enabled; // in gara niente autotune: si canta con la propria voce
+  if (!voice || !mics?.length) return null;
+  if (competition && !full) return null;
+  return (
+    <>
+      {competition ? (
+        <div className="m-mode-hint">Autotune non disponibile con la modalità competizione accesa</div>
+      ) : (
+      <div className={`m-vol m-autotune ${compact ? "compact" : ""} ${voice.autotune ? "on" : ""}`}>
+        <button
+          className={`icon-btn ${voice.autotune ? "on" : ""}`}
+          onClick={() => setVoice({ autotune: !voice.autotune })}
+          title={voice.autotune ? "Spegni l'autotune" : "Accendi l'autotune"}
+        >
+          <Wand2 size={18} />
+        </button>
+        <div className="m-vol-main">
+          <div className="m-vol-label">
+            <span>Autotune</span>
+            <b>{voice.autotune ? strengthLabel(voice.strength) : "Spento"}</b>
+          </div>
+          {voice.autotune && (
+            <input
+              type="range"
+              min={0}
+              max={1}
+              step={0.01}
+              value={voice.strength}
+              aria-label="Intensità dell'autotune"
+              style={{ ["--val" as string]: `${voice.strength * 100}%` }}
+              onChange={(e) => setVoice({ strength: parseFloat(e.target.value) })}
+            />
+          )}
+          {correctionText(voice) && <div className="m-autotune-live">{correctionText(voice)}</div>}
+          {error && <div className="m-vol-err">{error}</div>}
+        </div>
+      </div>
+      )}
+      {/* la voce passa sempre da SingITnow: restano solo gli avvisi (problemi, voce doppia) */}
+      {full && voice.engine && (voice.error || voice.listening.length > 0) && (
+        <div className="m-voice">
+          {voice.error && <div className="m-mode-hint">Problema con la voce: {voice.error}</div>}
+          {voice.listening.length > 0 && (
+            <div className="m-voice-warn">
+              In Windows è ancora attivo «Ascolta questo dispositivo» su {voice.listening.join(", ")}: la voce si sente
+              due volte. Disattivalo sul PC da Impostazioni audio → Microfono → Proprietà → Ascolto.
+            </div>
+          )}
+        </div>
+      )}
+    </>
+  );
+}
+
+/** Scheda «Microfoni» nei Settaggi: si regolano anche quando non sta suonando niente. */
+export function MicCard() {
+  const mics = useMics();
+  return (
+    <div className="m-mode m-mics">
+      <div className="m-mode-label">Microfoni</div>
+      {mics === null ? (
+        <div className="m-mode-hint">Leggo i microfoni del PC…</div>
+      ) : mics.length ? (
+        <>
+          <MicSliders compact />
+          <AutotuneControl compact full />
+        </>
+      ) : (
+        <div className="m-mode-hint">Nessun microfono collegato al PC</div>
+      )}
+    </div>
+  );
+}
+
 export function VocalSlider({
   name,
   player,
@@ -354,9 +557,9 @@ export function VocalSlider({
 // ------------------------------------------------------------------ "Fra poco tocca a te"
 export const GET_READY = 30; // secondi di preavviso (come l'annuncio "Sta per iniziare" sulla TV)
 
-/** Secondi alla fine del brano in corso se il prossimo in coda è di `name`, altrimenti null. */
+/** Secondi alla fine del brano in corso se il prossimo in coda è di `name` (anche in duetto), altrimenti null. */
 export function secondsToMyTurn(name: string, playlist: PlaylistState, player: LivePlayer): number | null {
-  if (!playlist.now_playing || playlist.entries[0]?.singer !== name) return null;
+  if (!playlist.now_playing || !singsIn(playlist.entries[0], name)) return null;
   return currentRemaining(playlist, player);
 }
 
@@ -392,7 +595,10 @@ export function EnableVibration() {
     blockedListeners.add(l);
     return () => void blockedListeners.delete(l);
   }, []);
-  if (!need) return null;
+  // nell'app Android l'avviso «Tocca a te» (con vibrazione) arriva dalla notifica: la scheda non serve.
+  // Su iPhone le pagine web non possono vibrare, quindi lì non compare mai: resta solo per chi usa
+  // Chrome su Android senza l'app.
+  if (!need || window.SingITnowApp) return null;
   return (
     <button
       className="m-vib"
@@ -401,7 +607,7 @@ export function EnableVibration() {
         setNeed(false);
       }}
     >
-      📳 Tocca qui per attivare la vibrazione quando è il tuo turno
+      📳 Tocca qui per attivare la vibrazione che ti avvertirà quando sarà il tuo turno.
     </button>
   );
 }
@@ -449,7 +655,7 @@ export function GetReadyAlert({
   }, [show, nextId]);
 
   // inizio del proprio brano: vibrazione e scheda Testo
-  const stageId = playlist.now_playing?.singer === name ? playlist.now_playing.id : null;
+  const stageId = singsIn(playlist.now_playing, name) ? playlist.now_playing!.id : null;
   const onStageRef = useRef(onStage);
   onStageRef.current = onStage;
   const lastStage = useRef<string | null>(null);
@@ -476,6 +682,9 @@ export function GetReadyAlert({
   if (!show || (dismissed === nextId && !zero)) return null;
   const secs = Math.max(0, Math.ceil(remaining!));
   const song = playlist.entries[0]?.song;
+  const first = playlist.entries[0];
+  // in duetto: con chi si canta (l'altro dei due)
+  const mate = first?.partner ? (singsIn({ singer: first.singer }, name) ? first.partner : first.singer) : "";
   return (
     <div className="m-ready" role="alertdialog" aria-live="assertive">
       <div className="m-ready-card">
@@ -489,6 +698,7 @@ export function GetReadyAlert({
             {song.artist && <span> · {song.artist}</span>}
           </div>
         )}
+        {mate && <div className="m-ready-duet">🎤 In duetto con {mate}</div>}
         <div className="m-ready-count">{zero ? "VAI!" : secs}</div>
         <EnableVibration />
         <div className="progress m-ready-bar">
@@ -544,7 +754,7 @@ export function ApplauseButton({ name, floating }: { name: string; floating?: bo
 // ------------------------------------------------------------------ comandi amministratore
 /**
  * Comandi del brano in corso riservati agli amministratori: pausa/ripresa, stop,
- * brano successivo, volume generale e della voce, QR code d'ingresso sulla TV.
+ * ricomincia, brano successivo, volume generale e della voce, tonalità.
  */
 export function AdminControls({ name, player, compact }: { name: string; player: LivePlayer; compact?: boolean }) {
   const [msg, setMsg] = useState("");
@@ -568,21 +778,63 @@ export function AdminControls({ name, player, compact }: { name: string; player:
         <button type="button" className="btn btn-ghost btn-sm" onClick={() => run(() => api.stop(), "Brano fermato")}>
           <Square size={15} /> Stop
         </button>
+        <button type="button" className="btn btn-ghost btn-sm" onClick={() => run(() => api.command("restart"), "Brano ricominciato")}>
+          <RotateCcw size={15} /> Ricomincia
+        </button>
         <button type="button" className="btn btn-ghost btn-sm" onClick={() => run(() => api.next(), "Brano successivo")}>
           <SkipForward size={15} /> Avanti
-        </button>
-        <button
-          type="button"
-          className="btn btn-ghost btn-sm"
-          onClick={() => run(() => api.showQr(), "QR code sulla TV per 10 secondi")}
-        >
-          <QrCode size={15} /> QR
         </button>
       </div>
       <VocalSlider name={name} player={player} compact={compact} kind="volume" />
       {/* Jukebox: solo il volume generale, la voce resta quella originale */}
       {!jukebox && <VocalSlider name={name} player={player} compact={compact} />}
+      {!jukebox && <KeyControl name={name} player={player} compact={compact} />}
+      <MicSliders compact={compact} />
+      {!jukebox && <AutotuneControl compact={compact} />}
       {msg && <div className="m-admin-msg">{msg}</div>}
+    </div>
+  );
+}
+
+// ------------------------------------------------------------------ tonalità della base
+const KEY_RANGE = 6;
+
+/** Abbassa o alza la tonalità della base sulla TV, un semitono per tocco. */
+function KeyControl({ name, player, compact }: { name: string; player: LivePlayer; compact?: boolean }) {
+  const remote = player?.state.key ?? 0;
+  // tocchi ravvicinati: si parte dall'ultimo valore inviato, non da quello (in ritardo) della TV
+  const [local, setLocal] = useState<number | null>(null);
+  const [error, setError] = useState("");
+  const release = useRef<number | undefined>(undefined);
+  useEffect(() => () => window.clearTimeout(release.current), []);
+  const value = local ?? remote;
+  const step = (d: number) => {
+    const k = Math.max(-KEY_RANGE, Math.min(KEY_RANGE, value + d));
+    if (k === value) return;
+    setLocal(k);
+    window.clearTimeout(release.current);
+    release.current = window.setTimeout(() => setLocal(null), 2500);
+    api
+      .command("key", k, name)
+      .then(() => setError(""))
+      .catch((e) => setError(e.message));
+  };
+  const label = value > 0 ? `+${value}` : value < 0 ? String(value) : "originale";
+  return (
+    <div className={`m-vol m-key ${compact ? "compact" : ""}`}>
+      <button className="icon-btn" onClick={() => step(-1)} disabled={value <= -KEY_RANGE} title="Abbassa di un semitono">
+        <Minus size={18} />
+      </button>
+      <div className="m-vol-main">
+        <div className="m-vol-label">
+          <span>Tonalità</span>
+          <b>{label}</b>
+        </div>
+        {error && <div className="m-vol-err">{error}</div>}
+      </div>
+      <button className="icon-btn" onClick={() => step(1)} disabled={value >= KEY_RANGE} title="Alza di un semitono">
+        <Plus size={18} />
+      </button>
     </div>
   );
 }
@@ -614,6 +866,12 @@ export function useVolumeKeys(isAdmin: boolean, player: LivePlayer) {
       const dir = VOLUME_KEYS[ev.key];
       if (!dir) return;
       ev.preventDefault();
+      step(dir);
+    };
+    // nell'app Android i tasti fisici del volume arrivano come evento "singitnow-volume"
+    const onAppKey = (ev: Event) => step(Number((ev as CustomEvent).detail) || 0);
+    const step = (dir: number) => {
+      if (!dir) return;
       // pressioni ravvicinate: si parte dall'ultimo valore inviato, non da quello (in ritardo) della TV
       const base = target.current !== null && performance.now() - last.current < 1500 ? target.current : currentRef.current;
       const v = Math.round(Math.max(0, Math.min(1, base + dir * VOLUME_STEP)) * 100) / 100;
@@ -638,15 +896,28 @@ export function useVolumeKeys(isAdmin: boolean, player: LivePlayer) {
         });
     };
     window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
+    window.addEventListener("singitnow-volume", onAppKey);
+    window.SingITnowApp?.setVolumeKeys(true); // l'app intercetta i tasti invece di cambiare il volume del telefono
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      window.removeEventListener("singitnow-volume", onAppKey);
+      window.SingITnowApp?.setVolumeKeys(false);
+    };
   }, [active]);
 }
 
 // ------------------------------------------------------------------ modalità (solo amministratori)
-/** Scelta Karaoke / Jukebox: vale per tutti, sulla TV e su ogni telefono. */
+/** Scelta Karaoke / Jukebox / DJ: vale per tutti, sulla TV e su ogni telefono. */
 export function ModeSwitch() {
   const mode = useMode();
+  const dj = useDj();
   const [error, setError] = useState("");
+  // partecipanti collegati, tra cui scegliere il DJ della serata
+  const [users, setUsers] = useState<string[]>([]);
+  const loadUsers = () => api.users().then((r) => setUsers(r.users)).catch(() => {});
+  useEffect(() => {
+    if (mode === "dj") loadUsers();
+  }, [mode]);
   const pick = (m: Mode) => {
     if (m === mode) return;
     api
@@ -654,22 +925,53 @@ export function ModeSwitch() {
       .then(() => setError(""))
       .catch((e) => setError(e.message));
   };
+  const options = Array.from(new Set([dj, ...users].filter(Boolean)));
   return (
     <div className="m-mode">
       <div className="m-mode-label">Modalità della serata</div>
-      <div className="m-seg" role="radiogroup" aria-label="Modalità">
+      <div className="m-seg m-seg-3" role="radiogroup" aria-label="Modalità">
         <button type="button" role="radio" aria-checked={mode === "karaoke"} className={mode === "karaoke" ? "on" : ""} onClick={() => pick("karaoke")}>
           <Mic2 size={16} /> Karaoke
         </button>
         <button type="button" role="radio" aria-checked={mode === "jukebox"} className={mode === "jukebox" ? "on" : ""} onClick={() => pick("jukebox")}>
           <Music size={16} /> Jukebox
         </button>
+        <button type="button" role="radio" aria-checked={mode === "dj"} className={mode === "dj" ? "on" : ""} onClick={() => pick("dj")}>
+          <Headphones size={16} /> DJ
+        </button>
       </div>
       <div className="m-mode-hint">
-        {mode === "jukebox"
-          ? "Voce originale, ognuno aggiunge quanti brani vuole"
-          : "Si canta a turno, un brano in coda per persona"}
+        {mode === "dj"
+          ? "Voce originale, aggiunge brani solo il DJ della serata (e gli amministratori)"
+          : mode === "jukebox"
+            ? "Voce originale, ognuno aggiunge quanti brani vuole"
+            : "Si canta a turno, un brano in coda per persona"}
       </div>
+      {/* in Karaoke, sotto la modalità, l'interruttore della competizione (come sul PC) */}
+      {mode === "karaoke" && <CompetitionCard inline />}
+      {mode === "dj" && (
+        <div className="field m-dj-field">
+          <Headphones size={18} />
+          <select
+            value={dj}
+            onFocus={loadUsers}
+            onChange={(e) =>
+              api
+                .setDj(e.target.value)
+                .then(() => setError(""))
+                .catch((err) => setError(err.message))
+            }
+            aria-label="DJ della serata"
+          >
+            <option value="">{options.length ? "Solo gli Admin" : "Nessun partecipante collegato"}</option>
+            {options.map((n) => (
+              <option key={n} value={n}>
+                {n}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
       {error && <div className="m-admin-err">{error}</div>}
     </div>
   );

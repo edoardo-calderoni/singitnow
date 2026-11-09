@@ -74,3 +74,19 @@ def remove(name: str) -> None:
 def path(name: str):
     p = _file(name)
     return p if p.exists() else None
+
+
+def rename(old: str, new: str) -> None:
+    """La foto segue la persona quando cambia nome («Marco» -> «Marco R.»)."""
+    if key(old) == key(new):
+        return
+    with _lock:
+        src = _file(old)
+        if not src.exists():
+            return
+        src.replace(_file(new))
+        index = _read_index()
+        index[key(new)] = int(time.time() * 1000)
+        index.pop(key(old), None)
+        _index_path().write_text(json.dumps(index, ensure_ascii=False), encoding="utf-8")
+    hub.publish("avatars", public_map())

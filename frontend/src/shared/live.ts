@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { api, PlayerState, PlaylistState, Song } from "./api";
 import { setAvatars } from "./Avatar";
 import { setMode } from "./mode";
@@ -170,7 +170,27 @@ export function useLive(onEvent?: Listener) {
     };
   }, []);
 
-  return { songs, playlist, connected, setPlaylist, player, synced };
+  // I brani in preparazione (e le richieste al DJ) arrivano dentro la playlist, che il PC rimanda
+  // solo quando cambia la coda: l'avanzamento dell'importazione invece arriva con gli eventi "song".
+  // Senza questo la card restava ferma all'1% di quando il brano era stato prenotato.
+  const live = useMemo(() => withLiveSongs(playlist, songs), [playlist, songs]);
+
+  return { songs, playlist: live, connected, setPlaylist, player, synced };
+}
+
+/** La playlist con i brani in preparazione aggiornati all'ultimo stato ricevuto. */
+export function withLiveSongs(playlist: PlaylistState, songs: Song[]): PlaylistState {
+  if (!playlist.waiting.length && !playlist.requests?.length) return playlist;
+  const byId = new Map(songs.map((s) => [s.id, s]));
+  const fresh = <T extends { song: Song | null }>(item: T, id: string): T => {
+    const s = byId.get(id);
+    return s && s !== item.song ? { ...item, song: s } : item;
+  };
+  return {
+    ...playlist,
+    waiting: playlist.waiting.map((w) => fresh(w, w.song_id)),
+    requests: playlist.requests?.map((r) => fresh(r, r.song_id)),
+  };
 }
 
 export type LivePlayer = ReturnType<typeof useLive>["player"];

@@ -85,3 +85,68 @@ def test_align_con_tempi_lrc_segue_lo_scarto_del_video():
     ratio = align(lines, voice, duration=40.0)
     assert ratio > 0.9
     assert [l.words[0].start for l in lines] == pytest.approx([15.0, 20.0, 25.0])
+
+
+# ------------------------------------------------------------------ note tenute
+from singitnow.lyrics import _HOP, fix_held_notes, syllables, voice_onsets  # noqa: E402
+
+
+def test_sillabe():
+    assert syllables("fateme") == 3
+    assert syllables("cantà") == 2
+    assert syllables("parcheggio") == 3
+    assert syllables("E") == 1
+    assert syllables("time", "en") == 1
+
+
+def held_voice():
+    """Voce sintetica di «E… EEEEEE fa-te-me can-tà»: una E breve, una pausa, una E tenuta 2,5 s
+    senza stacchi, poi un calo netto (consonante) all'inizio di ogni sillaba."""
+    import numpy as np
+
+    db = np.full(int(8 / _HOP), -60.0)
+
+    def sing(a, b):
+        db[int(round(a / _HOP)) : int(round(b / _HOP))] = -12.0
+
+    sing(1.0, 1.8)  # E
+    sing(2.3, 7.0)  # EEEEEE (tenuta) e poi fa-te-me can-tà
+    for t in (4.8, 5.1, 5.4, 5.7):  # f, t, m, c
+        db[int(round(t / _HOP))] = -30.0
+    return db, -40.0
+
+
+def bad_line():
+    """Come l'aveva sincronizzata Whisper: «fateme» e «cantà» partono dentro la E tenuta."""
+    return Line([Word("E", 1.0, 1.3), Word("fateme", 1.3, 3.5), Word("cantà", 3.5, 7.0)])
+
+
+def test_attacchi_delle_sillabe():
+    onsets = [round(i * _HOP, 2) for i in voice_onsets(held_voice())]
+    assert onsets == [0.98, 2.28, 4.8, 5.1, 5.4, 5.7]
+
+
+def test_nota_tenuta_resta_alla_parola_prima():
+    line = bad_line()
+    sung = [Word("E", 0.95, 1.3), Word("fatemi", 1.3, 5.6), Word("cantare", 5.6, 6.6)]
+    assert fix_held_notes([line], held_voice(), sung, "it") == 1
+    e, fateme, canta = line.words
+    assert e.start == 1.0 and e.end == pytest.approx(fateme.start)
+    assert fateme.start == pytest.approx(4.8)  # dopo la E tenuta, sulla «f»
+    assert 5.3 <= canta.start <= 5.8
+    assert canta.end == 7.0
+
+
+def test_senza_conferma_della_trascrizione_non_cambia_niente():
+    """Se anche Whisper aveva sentito «cantà» dove sta già, gli stacchi da soli non bastano."""
+    line = bad_line()
+    sung = [Word("E", 0.95, 1.3), Word("fatemi", 1.3, 3.5), Word("cantare", 3.5, 6.6)]
+    assert fix_held_notes([line], held_voice(), sung, "it") == 0
+    assert [w.start for w in line.words] == [1.0, 1.3, 3.5]
+
+
+def test_riga_senza_note_tenute_non_cambia():
+    line = Line([Word("fateme", 4.8, 5.4), Word("cantà", 5.7, 7.0)])
+    sung = [Word("fatemi", 4.8, 5.6), Word("cantare", 5.6, 6.6)]
+    assert fix_held_notes([line], held_voice(), sung, "it") == 0
+    assert [w.start for w in line.words] == [4.8, 5.7]

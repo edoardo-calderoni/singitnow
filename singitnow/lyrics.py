@@ -644,7 +644,8 @@ def force_align(lines: list[Line], audio, language: str) -> int:
 _HOP = 0.02  # risoluzione dell'inviluppo della voce (secondi)
 
 
-SNAP_VERSION = 3  # se cambia, i testi già in libreria vengono riallineati all'attacco della voce all'avvio
+# se cambia, i testi già in libreria vengono riallineati alla voce all'avvio (4: note tenute, fix_held_notes)
+SNAP_VERSION = 4
 _PHRASE_RANGE = 15.0  # dB sotto il volume tipico della frase entro cui la voce conta come «cantato»
 
 
@@ -744,11 +745,190 @@ def extend_to_voice(lines: list[Line], voice) -> int:
     return fixed
 
 
+_ONSET_DIP = 6.0  # dB: calo della voce che separa due sillabe (consonante, respiro, stacco)
+_ONSET_WIN = 0.15  # s: entro quanto, prima e dopo il calo, la voce deve tornare su
+_HELD_TRIGGER = 1.0  # s di nota già tenuta prima dell'inizio di una parola: la riga va ricontrollata
+_LONG = 0.7  # s di voce oltre i quali una sillaba è «tenuta»
+_VOWEL_GROUPS = re.compile(r"[aeiouy]+")
+
+
+def syllables(word: str, language: str = "") -> int:
+    """Sillabe (cantate) di una parola: gruppi di vocali. Esatto per l'italiano, indicativo per le altre."""
+    w = _norm(word)
+    n = len(_VOWEL_GROUPS.findall(w))
+    if language == "en" and n > 1 and w.endswith("e") and not w.endswith(("le", "ee")):
+        n -= 1  # «make», «time»: la e finale non si canta
+    return max(1, n)
+
+
+def voice_onsets(voice) -> list[int]:
+    """Attacchi delle sillabe nella voce isolata (blocchi da _HOP): dove la voce riparte dopo un calo
+    netto (consonante, respiro) o dopo il silenzio. Dentro una nota tenuta non ce ne sono, anche se
+    l'intonazione sale o scende (vocalizzo)."""
+    import numpy as np
+
+    db, thr = voice
+    n, w = len(db), int(_ONSET_WIN / _HOP)
+    out: list[int] = []
+    for i in range(1, n - 1):
+        if db[i] > db[i - 1] or db[i] > db[i + 1]:
+            continue  # non è un minimo locale
+        right = float(np.max(db[i + 1 : i + w + 1]))
+        left = float(np.max(db[max(0, i - w) : i]))
+        if right <= thr or right - db[i] < _ONSET_DIP:
+            continue
+        if db[i] > thr and left - db[i] < _ONSET_DIP / 2:
+            continue  # la voce stava solo salendo, nessuno stacco
+        if out and float(np.max(db[out[-1] : i + 1])) <= thr:
+            out[-1] = i  # più minimi nello stesso silenzio: conta l'ultimo, prima che la voce riparta
+        else:
+            out.append(i)
+    return out
+
+
+def _heard(sung: list[Word]) -> Callable[[str, float, float], tuple[float, float] | None]:
+    """Cerca nella trascrizione di Whisper quando ha sentito una parola: (inizio, fine) della più
+    simile (anche con qualche lettera diversa, «fateme»/«fatemi») fra quelle iniziate nell'intervallo."""
+    heard = [(_norm(w.text), w.start, w.end) for w in sung if w.start >= 0]
+
+    def find(text: str, lo: float, hi: float) -> tuple[float, float] | None:
+        t, best, when = _norm(text), 0.0, None
+        for n, s, e in heard:
+            if lo <= s <= hi and t and n:
+                r = SequenceMatcher(None, t, n).ratio()
+                if r > best:
+                    best, when = r, (s, e)
+        return when if best >= 0.6 else None
+
+    return find
+
+
+def fix_held_notes(
+    lines: list[Line], voice, sung: list[Word], language: str = "", onsets: list[int] | None = None
+) -> int:
+    """Le note tenute restano alla parola che si sta cantando.
+
+    Su una vocale tenuta a lungo («E… EEEEEE… fateme cantà») la rifinitura parola per parola
+    (force_align) può far iniziare le parole dopo in anticipo, anche di secondi, e il testo si colora
+    mentre si canta ancora la nota. Una parola però non può iniziare in mezzo a una nota tenuta:
+    deve partire da un attacco (consonante, stacco), e le sue sillabe devono trovare posto ciascuna
+    sul proprio attacco.
+
+    Una riga si corregge solo se due indizi indipendenti sono d'accordo:
+    1. una parola inizia dopo più di _HELD_TRIGGER secondi di nota già tenuta, senza stacchi;
+    2. la trascrizione di Whisper (`sung`) aveva sentito quella parola più vicino alla nuova
+       posizione che a quella attuale.
+    Da soli gli stacchi non bastano: nel canto legato le consonanti morbide (l, m, n, r, v) non
+    fanno calare la voce e sembrerebbero note tenute anche dove i tempi sono giusti.
+
+    Le parole della riga si ridistribuiscono sugli attacchi della voce: ogni parola sul numero giusto
+    di sillabe, la nota lunga solo sull'ultima sillaba di una parola, il più vicino possibile ai
+    tempi attuali. Restituisce le righe corrette.
+    """
+    import numpy as np
+
+    db, song_thr = voice
+    marks = np.asarray(voice_onsets(voice) if onsets is None else onsets, dtype=float) * _HOP
+    heard = _heard(sung)
+    fixed = 0
+    for l in lines:
+        words = l.words
+        if len(words) < 2 or words[0].start < 0:
+            continue
+        la, lb = int(words[0].start / _HOP), int(words[-1].end / _HOP)
+        if lb - la < 10 or lb > len(db):
+            continue
+        thr = max(song_thr, float(np.percentile(db[la:lb], 75)) - _PHRASE_RANGE)
+        line_start, line_end = words[0].start, words[-1].end
+        starts = [line_start] + [float(t) for t in marks if line_start + 0.1 < t < line_end - 0.1]
+        ends = starts[1:] + [line_end]
+
+        def voiced(t0: float, t1: float) -> float:
+            return float(np.count_nonzero(db[int(t0 / _HOP) : int(t1 / _HOP)] > thr)) * _HOP
+
+        # parole che iniziano in mezzo a una nota tenuta senza stacchi
+        held = []
+        for j, w in enumerate(words[1:], 1):
+            k = int(np.searchsorted(starts, w.start, side="right")) - 1
+            if k >= 0 and w.start - starts[k] >= _HELD_TRIGGER and voiced(starts[k], w.start) >= _HELD_TRIGGER:
+                held.append(j)
+        segs = len(starts)
+        if not held or segs < len(words):
+            continue
+
+        lengths = [voiced(a, b) for a, b in zip(starts, ends)]
+        sylls = [syllables(w.text, language) for w in words]
+
+        def cost(j: int, a: int, b: int) -> float:
+            """Parola j sugli attacchi a..b-1."""
+            k, r = sylls[j], b - a
+            c = 0.0 if j == 0 else 0.2 * abs(starts[a] - words[j].start)
+            if r < k:
+                c += 0.8 * (k - r)  # sillabe legate senza stacco
+            elif r > k:
+                # attacchi in più: poco male se sono note lunghe (vocale ripetuta, vibrato), molto se
+                # sono sillabe brevi (probabilmente di un'altra parola)
+                c += sum(sorted(0.3 if x >= 0.5 else 0.8 for x in lengths[a:b])[: r - k])
+            for x in lengths[a : a + min(r, k) - 1]:  # sillabe non finali: niente note lunghe
+                c += 1.5 * max(0.0, x - _LONG)
+            return c
+
+        inf = float("inf")
+        best = [[inf] * (segs + 1) for _ in range(len(words) + 1)]
+        back = [[0] * (segs + 1) for _ in range(len(words) + 1)]
+        best[0][0] = 0.0
+        for j in range(len(words)):
+            for a in range(segs):
+                if best[j][a] == inf:
+                    continue
+                for b in range(a + 1, segs + 1):
+                    c = best[j][a] + cost(j, a, b)
+                    if c < best[j + 1][b]:
+                        best[j + 1][b], back[j + 1][b] = c, a
+        if best[len(words)][segs] == inf:
+            continue
+        bounds, b = [], segs
+        for j in range(len(words), 0, -1):
+            a = back[j][b]
+            bounds.append((a, b))
+            b = a
+        bounds.reverse()
+        new = [starts[a] for a, _ in bounds]
+
+        # conferma della trascrizione: le parole sospette si avvicinano a dove Whisper le ha sentite
+        # e nessuna delle parole spostate se ne allontana
+        confirmed, ok = False, True
+        for j, (w, new_t) in enumerate(zip(words, new)):
+            old_t = w.start
+            if abs(new_t - old_t) < 0.3:
+                continue
+            h = heard(w.text, min(old_t, new_t) - 1.0, max(old_t, new_t) + 1.0)
+            if j in held:
+                if h is None or abs(new_t - h[0]) + 0.5 > abs(old_t - h[0]):
+                    ok = False
+                    break
+                confirmed = True
+            # le altre: ammesse se restano vicine all'inizio sentito da Whisper o dentro la parola
+            # sentita (anche Whisper fa iniziare troppo presto la parola dopo una nota tenuta)
+            elif h is not None and abs(new_t - h[0]) > abs(old_t - h[0]) + 0.3 and not h[0] <= new_t <= h[1]:
+                ok = False
+                break
+        if not (confirmed and ok):
+            continue
+        for j, (w, (a, b)) in enumerate(zip(words, bounds)):
+            w.start = starts[a]
+            if j + 1 < len(words):
+                w.end = starts[b]  # fino alla parola dopo (pause comprese: la nota è ancora sua)
+        fixed += 1
+    return fixed
+
+
 def resnap_saved(song_dir: Path) -> int | None:
     """Testo già in libreria: riallinea l'inizio delle parole all'attacco della voce (una volta sola).
 
-    Non rifà la sincronizzazione: sposta solo in avanti gli inizi che cadono prima del cantato.
-    Restituisce le parole corrette, o None se non c'era niente da fare.
+    Non rifà la sincronizzazione: sposta in avanti gli inizi che cadono prima del cantato, allunga
+    le note tenute a fine riga e rimette a posto le parole iniziate in mezzo a una nota tenuta.
+    Restituisce le parole (e righe) corrette, o None se non c'era niente da fare.
     """
     import json
 
@@ -767,6 +947,13 @@ def resnap_saved(song_dir: Path) -> int | None:
     ]
     voice = voice_activity(_load_16k(vocals))
     fixed = snap_to_voice(lines, voice) + extend_to_voice(lines, voice)
+    try:  # trascrizione di Whisper salvata: serve a confermare le correzioni sulle note tenute
+        wj = json.loads((song_dir / "whisper.json").read_text(encoding="utf-8"))
+        sung = [Word(t, s, e) for seg in wj["segments"] for t, s, e in seg]
+    except (OSError, ValueError, KeyError, TypeError):
+        sung = []
+    if sung:
+        fixed += fix_held_notes(lines, voice, sung, data.get("language", ""))
     out = to_json(lines, data.get("source", ""), data.get("language", ""))
     path.write_text(json.dumps(out, ensure_ascii=False), encoding="utf-8")
     return fixed
@@ -877,6 +1064,7 @@ def build(
             clamp_line_starts(lines)
             snap_to_voice(lines, voiced)
             extend_to_voice(lines, voiced)
+            fix_held_notes(lines, voiced, sung, language)
             return to_json(lines, "manual+whisper" if text is not None else "lrclib+whisper", language)
     if lines and synced:
         # Allineamento scarso (es. lingua non riconosciuta): tempi per riga di LRCLIB.

@@ -96,6 +96,18 @@ Negli ultimi 30 secondi di un brano compare l'annuncio **«Sta per iniziare…»
 - **Jukebox**: si ascolta il videoclip con la voce originale e senza testo in sovraimpressione, ognuno aggiunge quanti brani vuole (e può togliere i propri); i brani si mixano in battuta come in modalità DJ (vedi sotto); al posto di «canta» compare «Brano aggiunto da…», niente applausi né avviso del turno, l'amministratore regola solo il volume generale.
 - **DJ**: come il Jukebox, ma la playlist la decide il **DJ della serata**, eletto dal PC (menu sotto Karaoke/Jukebox/DJ) o da un amministratore (*Settaggi* → *Modalità della serata*) tra i partecipanti collegati: al DJ eletto compare un avviso con il giradischi e nel *Live* «Sei il DJ della serata!» (gli altri vedono «<nome> è il DJ della serata!»). Il DJ, gli amministratori e il PC aggiungono brani senza limiti; il DJ può anche spostarli e toglierli. I brani aggiunti dagli altri utenti diventano **richieste** (una alla volta per utente) che il DJ accetta o rifiuta dalla scheda *Richieste* o dal *Live*: se la accetta, solo chi l'ha chiesta riceve «<DJ> ha accettato la tua richiesta!» con il tempo d'attesa; se la rifiuta, nessun avviso. In questa modalità gli altri utenti non ricevono avvisi sui brani aggiunti. I brani si **mixano in battuta** (anche in Jukebox), come farebbe un DJ: il brano successivo si carica in anticipo e parte esattamente sul primo tempo di una battuta di quello che finisce, 4 battute prima della fine del suo ritmo, con la velocità adattata perché i BPM coincidano (come il pitch di un giradischi, al massimo ±6%, cambia leggermente anche l'intonazione; valgono anche i tempi doppi o dimezzati). Durante il mix il nuovo entra senza bassi e sale di volume, a metà i bassi si scambiano e il vecchio sfuma a zero; sulla TV il video nuovo compare in dissolvenza. Finito il mix il brano torna piano piano (20 s) alla sua velocità originale. Se i BPM sono troppo diversi o il ritmo di uno dei due non è regolare (ballate, intro libere) si fa una dissolvenza incrociata di 10 secondi. In entrambi i casi i lunghi silenzi all'inizio del brano che entra e alla fine di quello che esce non contano: il nuovo parte da dove si sente davvero (base e voce insieme, quindi un'intro a cappella resta) e il vecchio si mixa prima del suo silenzio finale. L'annuncio «Sta per iniziare» conta fino all'inizio del mix.
 
+## Serata, profili e libreria
+
+- **Coda di importazione**: con più brani aggiunti insieme, ognuno mostra (PC e telefono) il suo posto in coda («In coda (3°)») e quando sarà pronto.
+- **Ripresa dopo un crash**: se l'app si chiude a metà serata, al riavvio (entro 8 ore) tornano partecipanti (con gli stessi nomi), classifica della serata e della competizione, statistiche, e il brano che suonava torna in cima alla coda (`data/party.json`). Le prenotazioni restano comunque.
+- **Voto del pubblico** (Competizione): a fine brano, per 40 secondi, gli altri partecipanti votano l'esibizione dal telefono con da 1 a 5 stelle (chi canta non vota sé stesso; si può cambiare voto). Il punteggio in classifica è 70% intonazione + 30% pubblico (5 stelle = 100); sulla TV un banner conta i voti.
+- **Statistiche della serata**: il più applaudito, la miglior intonazione, il duetto migliore e chi ha cantato di più, con i totali. Sulla TV dal pulsante sotto la Competizione o dai *Settaggi* di un amministratore; il QR code apre il riepilogo sul telefono, che lo salva come immagine (anche dal *Live*).
+- **Profili**: chi torna un'altra sera (stesso nome e cognome) trova nel profilo le esibizioni di tutte le serate, il record personale, il brano preferito e gli ultimi brani cantati con il voto; la foto torna da sola (`data/profiles/`).
+- **Registrazioni**: in Karaoke il player registra voce dei microfoni e base; chi ha cantato (anche in duetto) la scarica dal profilo in M4A. Sulla TV si vede «REC»; si spegne nei *Settaggi* («Registra le esibizioni»); si cancellano dopo 60 giorni (`data/recordings/`). Nell'app Android (dalla 1.7) i file vanno nella cartella Download.
+- **Spazio su disco** (*Settaggi*): quanto occupano i brani (video, tracce, tonalità trasposte), registrazioni e modelli; si eliminano le tonalità trasposte, un brano o tutti i brani mai suonati.
+- **Playlist di YouTube**: incollando il link di una playlist in *Aggiungi brano* (PC e amministratori dal telefono) si scelgono quali brani importare, ed eventualmente si mettono anche in coda.
+- **Backup** (*Settaggi* → *Backup della libreria*): esporta solo i dati (testi, anche corretti a mano, voti, profili, foto: pochi MB) o tutto (con video, tracce e registrazioni) in un .zip nella cartella Download; *Importa un backup…* aggiunge i brani che mancano (senza i file si riscaricano tenendo il testo del backup) e unisce voti, profili e foto. Niente password nel backup.
+
 ## Configurazione (variabili d'ambiente)
 
 | Variabile | Default | Note |
@@ -134,6 +146,13 @@ singitnow/          backend Python (FastAPI)
   beats.py          griglia del ritmo per il mix in battuta (modalità DJ)
   library.py        libreria su disco (data/library/<id>/)
   playlist.py       coda dei cantanti
+  party.py          la serata salvata su disco (ripresa dopo un crash)
+  competition.py    competizione e voto del pubblico
+  stats.py          statistiche della serata
+  profiles.py       profili da una serata all'altra
+  recordings.py     registrazioni delle esibizioni
+  storage.py        spazio su disco
+  backup.py         esportazione e importazione della libreria
 tests/              test automatici (pytest)
 android/            app Android (WebView a tutto schermo)
 frontend/           React + TypeScript (Vite)

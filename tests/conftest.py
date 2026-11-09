@@ -43,6 +43,7 @@ def add_song():
 
     def make(song_id: str, status: str = READY, duration: float = 200.0, title: str = "") -> Song:
         song = Song(id=song_id, youtube_id=song_id, title=title or f"Brano {song_id}", duration=duration, status=status)
+        song.dir.mkdir(parents=True, exist_ok=True)
         with library._lock:
             library._songs[song_id] = song
         return song

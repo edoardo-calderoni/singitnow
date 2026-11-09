@@ -42,6 +42,7 @@ class Playlist:
         # proposte di duetto in attesa di risposta: {"id", "entry_id", "from", "to", "at"}
         self._duets: list[dict] = []
         self._file = config.DATA_DIR / "playlist.json"
+        self._marked: str | None = None  # voce della playlist di cui è già segnata la riproduzione
         # secondi che mancano alla fine del brano in corso (lo imposta app.py dallo stato del player)
         self.now_remaining = lambda: 0.0
 
@@ -80,9 +81,18 @@ class Playlist:
         return entry
 
     def _changed(self) -> None:
+        self._mark_played()
         self._save()
         hub.publish("playlist", self.snapshot())
         competition.on_playing(self.now_playing is not None)  # inizio/fine della sessione
+
+    def _mark_played(self) -> None:
+        """Il brano appena partito diventa il più recente della libreria (ordine «ultimi suonati»)."""
+        e = self.now_playing
+        if e is None or e.id == self._marked:
+            return
+        self._marked = e.id
+        library.update(e.song_id, played_at=time.time())
 
     # -------------------------------------------------------------- lettura
     def snapshot(self) -> dict:

@@ -266,3 +266,25 @@ def test_forget_song(pl, add_song):
     pl.forget_song("a")
     assert pl._entries == [] and pl._requests == []
     assert not pl.wants_song("a")
+
+
+# ------------------------------------------------------------------ ordine della libreria
+def test_il_brano_suonato_sale_in_cima_alla_libreria(pl, add_song):
+    from singitnow.library import library
+
+    old = add_song("vecchio")
+    new = add_song("nuovo")
+    old.created_at, new.created_at = 1000.0, 2000.0
+    assert [s.id for s in library.all()] == ["nuovo", "vecchio"]  # mai suonati: per importazione
+    pl.add("vecchio", "Anna")  # parte subito
+    assert old.played_at > 0 and new.played_at == 0
+    assert [s.id for s in library.all()] == ["vecchio", "nuovo"]
+
+
+def test_la_riproduzione_si_segna_una_volta_per_avvio(pl, add_song):
+    song = add_song("a")
+    add_song("b")
+    pl.add("a", "Anna")
+    first = song.played_at
+    pl.add("b", "Bruno")  # la coda cambia, ma «a» sta ancora suonando
+    assert song.played_at == first

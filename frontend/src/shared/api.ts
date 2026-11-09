@@ -21,6 +21,8 @@ export interface Song {
   lyrics_source: string;
   language: string;
   created_at: number;
+  /** ultima riproduzione (secondi; 0 = mai) */
+  played_at?: number;
   media?: { video: string; instrumental: string; vocals: string; lyrics: string; pitch?: string; beats?: string };
 }
 

@@ -174,8 +174,15 @@ export function useLive(onEvent?: Listener) {
   // solo quando cambia la coda: l'avanzamento dell'importazione invece arriva con gli eventi "song".
   // Senza questo la card restava ferma all'1% di quando il brano era stato prenotato.
   const live = useMemo(() => withLiveSongs(playlist, songs), [playlist, songs]);
+  // libreria dalla più recente: appena parte un brano sale in cima (vedi bySongRecency)
+  const sorted = useMemo(() => [...songs].sort(bySongRecency), [songs]);
 
-  return { songs, playlist: live, connected, setPlaylist, player, synced };
+  return { songs: sorted, playlist: live, connected, setPlaylist, player, synced };
+}
+
+/** Ordine della libreria: ultima riproduzione, o l'importazione per i brani mai suonati. */
+export function bySongRecency(a: Song, b: Song): number {
+  return Math.max(b.played_at ?? 0, b.created_at) - Math.max(a.played_at ?? 0, a.created_at);
 }
 
 /** La playlist con i brani in preparazione aggiornati all'ultimo stato ricevuto. */

@@ -43,6 +43,12 @@ class Song:
     language: str = ""
     confirmed: bool = False  # artista e titolo confermati da chi l'ha importato: il download non li cambia
     created_at: float = field(default_factory=time.time)
+    played_at: float = 0.0  # ultima volta che è stato riprodotto (0 = mai)
+
+    @property
+    def recent(self) -> float:
+        """Ordine della libreria: ultima riproduzione, o l'importazione se non è mai stato suonato."""
+        return max(self.played_at, self.created_at)
 
     @property
     def dir(self) -> Path:
@@ -135,7 +141,7 @@ class Library:
 
     def all(self) -> list[Song]:
         with self._lock:
-            return sorted(self._songs.values(), key=lambda s: s.created_at, reverse=True)
+            return sorted(self._songs.values(), key=lambda s: s.recent, reverse=True)
 
     def get(self, song_id: str) -> Song | None:
         with self._lock:

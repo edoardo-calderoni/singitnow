@@ -1,5 +1,5 @@
 import { Check, Clock, Headphones, X } from "lucide-react";
-import { DjRequest, fmtEta, fmtTime } from "../shared/api";
+import { DjRequest, fmtEta, fmtPrep, fmtTime } from "../shared/api";
 import { Avatar } from "../shared/Avatar";
 
 type Safe = (fn: () => Promise<unknown>, ok?: string) => Promise<void>;
@@ -48,7 +48,7 @@ export function DjRequests({
                 )}
                 {r.song && r.song.status !== "ready" && r.song.status !== "error" && (
                   <span className="m-wait">
-                    in preparazione {Math.round((r.song.progress ?? 0) * 100)}%
+                    in preparazione {fmtPrep(r.song)}
                     {fmtEta(r.song) && ` · ${fmtEta(r.song)}`}
                   </span>
                 )}

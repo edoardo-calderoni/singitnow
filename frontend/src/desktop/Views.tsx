@@ -20,6 +20,7 @@ import {
   api,
   filterSongs,
   fmtEta,
+  fmtPrep,
   fmtTime,
   youtubeId,
   LANGUAGES,
@@ -43,7 +44,7 @@ function StatusBadge({ song }: { song: Song }) {
     );
   return (
     <span className="badge work">
-      <Loader2 size={12} className="spin" /> {Math.round(song.progress * 100)}%
+      <Loader2 size={12} className="spin" /> {fmtPrep(song)}
     </span>
   );
 }
@@ -341,7 +342,7 @@ export function SearchView({
                     </span>
                   ) : s && s.status !== "error" ? (
                     <span className="badge work">
-                      <Loader2 size={12} className="spin" /> {Math.round(s.progress * 100)}%
+                      <Loader2 size={12} className="spin" /> {fmtPrep(s)}
                       {fmtEta(s) && <> · {fmtEta(s)}</>}
                     </span>
                   ) : (

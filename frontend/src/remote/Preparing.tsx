@@ -1,5 +1,5 @@
 import { Clock, Loader2, X } from "lucide-react";
-import { api, fmtEta, fmtTime, PlaylistState } from "../shared/api";
+import { api, fmtEta, fmtPrep, fmtTime, PlaylistState } from "../shared/api";
 import { Avatar } from "../shared/Avatar";
 
 type Safe = (fn: () => Promise<unknown>, ok?: string) => Promise<void>;
@@ -43,7 +43,8 @@ export function Preparing({
                   </span>
                 )}
                 <span className="m-wait">
-                  {Math.round((w.song?.progress ?? 0) * 100)}%{fmtEta(w.song) && ` · ${fmtEta(w.song)}`}
+                  {fmtPrep(w.song)}
+                  {fmtEta(w.song) && ` · ${fmtEta(w.song)}`}
                 </span>
               </div>
               {/* su una riga a sé: così va a capo invece di essere tagliata */}

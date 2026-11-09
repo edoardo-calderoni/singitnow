@@ -38,6 +38,7 @@ class Song:
     progress: float = 0.0
     step: str = "In coda"
     eta: float = 0.0  # secondi stimati alla fine dell'elaborazione (0 = sconosciuto)
+    queue_pos: int = 0  # in attesa di essere preparato: posizione nella coda di importazione (1 = il prossimo)
     error: str = ""
     lyrics_source: str = ""
     language: str = ""

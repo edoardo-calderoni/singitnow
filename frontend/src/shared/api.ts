@@ -17,6 +17,8 @@ export interface Song {
   step: string;
   /** secondi stimati alla fine dell'elaborazione (0 = sconosciuto) */
   eta: number;
+  /** in attesa di essere preparato: posizione nella coda di importazione (1 = il prossimo) */
+  queue_pos?: number;
   error: string;
   lyrics_source: string;
   language: string;
@@ -348,13 +350,21 @@ export function filterSongs(songs: Song[], text: string, lang: string): Song[] {
   });
 }
 
-/** Tempo residuo di elaborazione in forma leggibile ("≈ 2 min"), "" se sconosciuto. */
+/** Tempo residuo di elaborazione in forma leggibile ("≈ 2 min"), "" se sconosciuto. Per i brani
+ *  ancora in coda è il tempo fino a quando saranno pronti (compresi quelli davanti). */
 export function fmtEta(song?: Pick<Song, "eta" | "status"> | null): string {
-  if (!song || !song.eta || song.status === "ready" || song.status === "error" || song.status === "queued") return "";
+  if (!song || !song.eta || song.status === "ready" || song.status === "error") return "";
   const s = song.eta;
   if (s < 15) return "quasi pronto";
   if (s < 60) return `≈ ${Math.ceil(s / 10) * 10} s`;
   return `≈ ${Math.ceil(s / 60)} min`;
+}
+
+/** Stato di un brano in preparazione: «In coda (2°)» se aspetta il suo turno, altrimenti la percentuale. */
+export function fmtPrep(song?: Pick<Song, "status" | "progress" | "queue_pos"> | null): string {
+  if (!song) return "";
+  if (song.status === "queued") return song.queue_pos ? `In coda (${song.queue_pos}°)` : "In coda";
+  return `${Math.round((song.progress ?? 0) * 100)}%`;
 }
 
 /** Voto d'intonazione di fine brano (e riga della classifica della serata). */

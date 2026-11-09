@@ -90,6 +90,7 @@ class Pipeline:
         if song_id == self._current:
             self._cancelled.add(song_id)
         library.discard(song_id)
+        self.refresh_queue()
         log.info("Importazione di %s annullata", song_id)
         return True
 
@@ -104,6 +105,7 @@ class Pipeline:
         if self._thread is None:
             self._thread = threading.Thread(target=self._run, name="pipeline", daemon=True)
             self._thread.start()
+            self.refresh_queue()  # brani rimasti in coda dall'ultima volta
         self._wake.set()
 
     def enqueue(
@@ -123,6 +125,7 @@ class Pipeline:
                     library.update(existing.id, artist=artist, title=name, confirmed=True)
             if existing.status == ERROR:
                 library.update(existing.id, status=QUEUED, progress=0.0, step="In coda", error="")
+                self.refresh_queue()
                 self._wake.set()
             return library.get(existing.id) or existing
         song = Song(
@@ -136,6 +139,7 @@ class Pipeline:
             source_url=f"https://www.youtube.com/watch?v={youtube_id}",
         )
         library.add(song)
+        self.refresh_queue()
         self._wake.set()
         return song
 
@@ -260,6 +264,8 @@ class Pipeline:
         ]
         stop = threading.Event()
         self._current = sid
+        library.update(sid, queue_pos=0)
+        self.refresh_queue()
         threading.Thread(target=self._eta_ticker, args=(sid, todo, stop), daemon=True).start()
         try:
             if "download" in todo:
@@ -298,12 +304,28 @@ class Pipeline:
             stop.set()
             self._phase = {}
             self._current = ""
+            self.refresh_queue()
             shutil.rmtree(work, ignore_errors=True)
             if sid in self._cancelled:
                 # annullato: via anche i file scritti dopo l'annullamento
                 self._cancelled.discard(sid)
                 library.discard(sid)
                 shutil.rmtree(config.LIBRARY_DIR / sid, ignore_errors=True)
+
+    def refresh_queue(self, current_left: float | None = None) -> None:
+        """Posizione e tempo stimato di ogni brano in attesa di essere preparato.
+
+        Il tempo è quanto manca a quello in elaborazione, più la preparazione di quelli davanti, più
+        la propria: con dieci brani aggiunti insieme ognuno sa quando sarà pronto."""
+        if current_left is None:
+            cur = library.get(self._current) if self._current else None
+            current_left = (cur.eta or self.expected_total(cur.duration or 240)) if cur else 0.0
+        ahead = current_left
+        for n, q in enumerate(library.pending(), 1):
+            ahead += self.expected_total(q.duration or 240)
+            step = "In coda: è il prossimo" if n == 1 else f"In coda: {n}° da preparare"
+            if (q.queue_pos, q.step) != (n, step) or abs(q.eta - ahead) >= 1:
+                library.update(q.id, queue_pos=n, step=step, eta=round(ahead, 1))
 
     def expected_total(self, duration: float) -> float:
         """Secondi previsti per preparare da zero un brano di quella durata (tutte le fasi)."""
@@ -344,12 +366,7 @@ class Pipeline:
             shown = remaining if shown is None else 0.6 * (shown - 1.0) + 0.4 * remaining
             try:
                 library.update(sid, eta=round(max(shown, 1.0), 1))
-                # i brani in attesa di preparazione partono dopo questo: anche loro hanno la loro stima
-                # (quanto manca a questo + la preparazione di quelli davanti + la propria)
-                ahead = max(shown, 1.0)
-                for q in library.pending():
-                    ahead += self.expected_total(q.duration or 240)
-                    library.update(q.id, eta=round(ahead, 1))
+                self.refresh_queue(max(shown, 1.0))
             except Exception:  # un errore occasionale non deve fermare la stima per tutto il brano
                 log.exception("Aggiornamento tempo residuo")
 

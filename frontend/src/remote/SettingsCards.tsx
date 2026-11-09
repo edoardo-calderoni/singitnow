@@ -39,7 +39,7 @@ export function PlaylistSettingsCard() {
       />
       <SwitchRow
         label="Quiz musicale"
-        desc="In Karaoke con la Competizione accesa, fra un brano e l'altro: un pezzo di un brano della libreria e tre risposte sul telefono. Chi indovina per primo guadagna punti."
+        desc="In Karaoke, con la Competizione accesa e almeno due partecipanti, fra un brano e l'altro: un pezzo di un brano della libreria e tre risposte sul telefono. Chi indovina per primo guadagna punti."
         value={settings?.quiz ?? null}
         onChange={(v) => set({ quiz: v })}
       />

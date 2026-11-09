@@ -36,6 +36,7 @@ WORD_ANSWER = 10.0  # …e poi c'è ancora un po' di tempo per rispondere
 REVEAL = 7.0
 RANKING = 7.0
 RECENT = 15  # brani usati di recente: per un po' non tornano
+MIN_PLAYERS = 2  # partecipanti collegati dal telefono: da soli non c'è gara
 
 QUESTIONS = {
     "title": "Come si intitola questo brano?",
@@ -249,9 +250,9 @@ def _advance(qid: str, phase: str) -> None:
 
 def start(after_entry: str, exclude: set[str] | None = None) -> bool:
     """Fra un brano (`after_entry`, appena finito) e il successivo. False se il quiz non si fa:
-    spento, Competizione spenta, non in Karaoke, nessuno collegato dal telefono o troppo pochi brani."""
+    spento, Competizione spenta, non in Karaoke, meno di due partecipanti o troppo pochi brani."""
     global _state
-    if not mode.quiz() or not competition.enabled() or mode.is_jukebox() or not people.public():
+    if not mode.quiz() or not competition.enabled() or mode.is_jukebox() or len(people.public()) < MIN_PLAYERS:
         return False
     with _lock:
         if _state:

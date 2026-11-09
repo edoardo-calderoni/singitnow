@@ -19,6 +19,7 @@ def setup(monkeypatch):
     quiz._recent.clear()
     quiz._tally.clear()
     mode.set_quiz(True)
+    competition.set_enabled(True)
     yield
     quiz.cancel()
     mode.set_quiz(False)
@@ -51,6 +52,8 @@ def songs(add_song):
 def test_senza_nessuno_collegato_o_spento_non_parte(songs):
     assert not quiz.start("e1")  # nessuno dal telefono
     people.join("Anna", "Rossi")
+    assert not quiz.start("e1")  # da soli non c'è gara
+    people.join("Marco", "Bianchi")
     mode.set_quiz(False)
     assert not quiz.start("e1")
     mode.set_quiz(True)
@@ -78,6 +81,7 @@ def test_domande_ben_formate(songs):
 
 def test_risposta_esatta_chiude_la_domanda_e_da_i_punti(songs):
     people.join("Anna", "Rossi")
+    people.join("Marco", "Bianchi")
     assert quiz.start("e1")
     assert quiz.public()["phase"] == "intro"
     assert "correct" not in quiz.public()  # la risposta giusta non si svela prima
@@ -107,6 +111,7 @@ def test_punti_sulla_media_della_competizione_con_un_tetto():
 
 def test_cambio_di_brano_annulla_il_quiz(songs):
     people.join("Anna", "Rossi")
+    people.join("Marco", "Bianchi")
     assert quiz.start("e1")
     quiz.on_playlist("e1")  # stesso brano: continua
     assert quiz.public()["phase"] == "intro"
@@ -116,6 +121,7 @@ def test_cambio_di_brano_annulla_il_quiz(songs):
 
 def test_fasi_fino_alla_classifica(songs):
     people.join("Anna", "Rossi")
+    people.join("Marco", "Bianchi")
     assert quiz.start("e1")
     qid = quiz._state["id"]
     for phase in ("intro", "question", "reveal"):
@@ -124,3 +130,8 @@ def test_fasi_fino_alla_classifica(songs):
     assert p["phase"] == "ranking" and p["winner"] is None and "ranking" in p
     quiz._advance(qid, "ranking")
     assert quiz.public()["phase"] is None
+
+
+def test_acceso_di_default():
+    mode._path().unlink(missing_ok=True)
+    assert mode.quiz()

@@ -111,8 +111,8 @@ def auto_key() -> bool:
 
 def quiz() -> bool:
     """Settaggio «Quiz musicale»: in Karaoke, fra un brano e l'altro, un quiz sui brani della libreria.
-    Spento di default."""
-    return bool(_read().get("quiz", False))
+    Acceso di default (parte solo con la Competizione accesa e almeno due partecipanti)."""
+    return bool(_read().get("quiz", True))
 
 
 def settings_public() -> dict:

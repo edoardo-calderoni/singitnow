@@ -81,7 +81,7 @@ function SettingsDialog({ onClose, onError }: { onClose: () => void; onError: (m
         />
         <SwitchSetting
           label="Quiz musicale"
-          desc="In Karaoke con la Competizione accesa, fra un brano e l'altro: la TV fa sentire un pezzo di un brano della libreria e dal telefono si indovina titolo, artista, anno o la parola che viene dopo. Chi indovina per primo guadagna punti in classifica."
+          desc="In Karaoke, con la Competizione accesa e almeno due partecipanti, fra un brano e l'altro: la TV fa sentire un pezzo di un brano della libreria e dal telefono si indovina titolo, artista, anno o la parola che viene dopo. Chi indovina per primo guadagna punti in classifica."
           value={values?.quiz ?? null}
           onChange={(v) => toggle("quiz", v)}
         />

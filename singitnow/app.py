@@ -18,7 +18,7 @@ from pydantic import BaseModel
 
 from . import (
     __version__, admin, audio, avatars, competition, config, halloffame, mics, mode, names, party, people, profiles,
-    stats, wifi, youtube,
+    recordings, stats, wifi, youtube,
 )
 from .events import hub
 from .library import READY, library
@@ -44,6 +44,7 @@ async def lifespan(app: FastAPI):
     pipeline.backfill_pitch()
     pipeline.backfill_voice_snap()
     pipeline.backfill_beats()
+    threading.Thread(target=recordings.cleanup, name="pulizia-registrazioni", daemon=True).start()
     # voce dei microfoni gestita da SingITnow (autotune): il motore audio parte se è stato scelto
     threading.Thread(target=voice.apply, name="voce-avvio", daemon=True).start()
     yield
@@ -724,6 +725,7 @@ def set_mode(req: ModeReq):
 class SettingsReq(BaseModel):
     autoplay: bool | None = None
     locked: bool | None = None
+    record: bool | None = None
 
 
 @app.get("/api/settings")
@@ -738,6 +740,8 @@ def set_settings(req: SettingsReq):
         mode.set_autoplay(req.autoplay)
     if req.locked is not None:
         mode.set_locked(req.locked)
+    if req.record is not None:
+        mode.set_record(req.record)
     return mode.settings_public()
 
 
@@ -950,6 +954,53 @@ def audience_vote(req: VoteReq):
     if why:
         raise HTTPException(409, why)
     return competition.public()
+
+
+# ------------------------------------------------------------------ registrazioni delle esibizioni
+@app.post("/api/recordings", dependencies=[Depends(admin.require_control)])
+async def upload_recording(request: Request, song_id: str, seconds: float, singer: str = "", partner: str = ""):
+    """Il player della TV manda la registrazione dell'esibizione appena finita (WebM/Opus)."""
+    song = library.get(song_id)
+    performers = []
+    for name in (singer, partner):
+        name = name.strip()
+        if name:
+            first, last = people.full_of(name) or (name, "")
+            performers.append((first, last, name))
+    if not performers:
+        raise HTTPException(400, "Esibizione senza cantante")
+    try:
+        info = recordings.save(await request.body(), {
+            "song_id": song_id, "title": song.title if song else "", "artist": song.artist if song else "",
+            "seconds": seconds, "performers": performers,
+        })
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    for _, _, name in performers:
+        hub.publish("recording", {"name": name, "title": info["title"]})  # «La tua esibizione è registrata»
+    return {"id": info["id"]}
+
+
+@app.get("/api/recordings")
+def my_recordings(first: str, last: str = ""):
+    """Registrazioni in cui ha cantato chi usa il telefono (nome e cognome)."""
+    return {"recordings": recordings.for_person(first, last), "keep_days": recordings.KEEP_DAYS}
+
+
+@app.get("/api/recordings/{rid}/file")
+def recording_file(rid: str, first: str, last: str = ""):
+    found = recordings.file(rid, first, last)
+    if not found:
+        raise HTTPException(404, "Registrazione non trovata")
+    path, name = found
+    return FileResponse(path, filename=name)
+
+
+@app.delete("/api/recordings/{rid}")
+def delete_recording(rid: str, first: str, last: str = ""):
+    if not recordings.delete(rid, first, last):
+        raise HTTPException(404, "Registrazione non trovata")
+    return {"ok": True}
 
 
 # ------------------------------------------------------------------ statistiche della serata

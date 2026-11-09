@@ -6,6 +6,15 @@ import { EveningStats, StatsCard, statsCards, statsImage, statsTotals } from "..
 
 const ICONS: Record<StatsCard["key"], typeof Hand> = { applause: Hand, pitch: Mic2, duet: Users, songs: Music };
 
+function blobToBase64(b: Blob): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(String(r.result).split(",")[1] ?? "");
+    r.onerror = () => reject(r.error);
+    r.readAsDataURL(b);
+  });
+}
+
 /** Arrivati dal QR code sulla TV (…/remote?stats=1): il riepilogo si apre subito. */
 export const openedFromQr = () => new URLSearchParams(location.search).has("stats");
 
@@ -27,6 +36,7 @@ export function EveningStatsSheet({ onClose }: { onClose: () => void }) {
   const [stats, setStats] = useState<EveningStats | null>(null);
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState("");
 
   useEffect(() => {
     api.stats().then(setStats).catch((e) => setError(e.message));
@@ -40,6 +50,13 @@ export function EveningStatsSheet({ onClose }: { onClose: () => void }) {
       const blob = await statsImage(stats, avatarUrlOf);
       const fileName = `serata-${new Date(stats.started * 1000).toISOString().slice(0, 10)}.png`;
       const file = new File([blob], fileName, { type: "image/png" });
+      // nell'app Android: la salva lei in Immagini/SingITnow
+      const app = window.SingITnowApp;
+      if (app?.saveFile) {
+        const b64 = await blobToBase64(blob);
+        setSaved(app.saveFile(b64, fileName, "image/png") ? "Salvata in Immagini/SingITnow" : "Salvataggio non riuscito");
+        return;
+      }
       // dal telefono: condividi (salva in galleria, WhatsApp…); altrimenti scarica il file
       if (navigator.canShare?.({ files: [file] })) {
         await navigator.share({ files: [file], title: "La serata" }).catch(() => {});
@@ -97,6 +114,7 @@ export function EveningStatsSheet({ onClose }: { onClose: () => void }) {
           );
         })}
         {error && <div className="m-vote-note err">{error}</div>}
+        {saved && <div className="m-vote-note">{saved}</div>}
         {cards.length > 0 && (
           <button type="button" className="btn btn-primary btn-wide" onClick={save} disabled={saving}>
             {saving ? <Loader2 size={16} className="spin" /> : <Download size={16} />} Salva come immagine

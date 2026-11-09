@@ -153,6 +153,22 @@ export interface Competition {
   audience_weight?: number;
 }
 
+/** Registrazione di un'esibizione (la vede solo chi ha cantato). */
+export interface Recording {
+  id: string;
+  t: number;
+  song_id: string;
+  title: string;
+  artist: string;
+  seconds: number;
+  names: string[];
+  ready: boolean; // convertita in M4A
+}
+
+/** Indirizzo per scaricare una registrazione. */
+export const recordingUrl = (id: string, first: string, last: string) =>
+  `/api/recordings/${id}/file?first=${encodeURIComponent(first)}&last=${encodeURIComponent(last)}`;
+
 /** Profilo di una persona, da tutte le serate (nome e cognome scritti sul telefono). */
 export interface Profile {
   performances: number;
@@ -317,6 +333,18 @@ export const api = {
   showQr: () => req("POST", "/api/admin/qr"),
   competition: () => req<Competition>("GET", "/api/competition"),
   stats: () => req<import("./stats").EveningStats>("GET", "/api/stats"),
+  uploadRecording: async (blob: Blob, song_id: string, seconds: number, singer: string, partner: string) => {
+    const q = new URLSearchParams({ song_id, seconds: String(Math.round(seconds)), singer, partner });
+    const res = await fetchPC(`/api/recordings?${q}`, { method: "POST", headers: authHeaders(undefined), body: blob }, 120000);
+    if (!res.ok) throw new Error((await res.json().catch(() => null))?.detail ?? "Registrazione non salvata");
+  },
+  recordings: (first: string, last: string) =>
+    req<{ recordings: Recording[]; keep_days: number }>(
+      "GET",
+      `/api/recordings?first=${encodeURIComponent(first)}&last=${encodeURIComponent(last)}`,
+    ),
+  deleteRecording: (id: string, first: string, last: string) =>
+    req("DELETE", `/api/recordings/${id}?first=${encodeURIComponent(first)}&last=${encodeURIComponent(last)}`),
   profile: (first: string, last: string) =>
     req<Profile>("GET", `/api/profile?first=${encodeURIComponent(first)}&last=${encodeURIComponent(last)}`),
   statsQr: () => req<{ url: string; qr_svg: string }>("GET", "/api/stats/qr"),
@@ -337,10 +365,10 @@ export const api = {
   saveWifi: (w: Wifi) => req<{ wifi: Wifi | null }>("PUT", "/api/admin/wifi", w),
   showWifi: () => req("POST", "/api/admin/wifi/show"),
   wifiQr: () => req<{ ssid: string; security: Wifi["security"]; qr_svg: string }>("GET", "/api/wifi/qr"),
-  settings: () => req<{ autoplay: boolean; locked: boolean }>("GET", "/api/settings"),
+  settings: () => req<{ autoplay: boolean; locked: boolean; record: boolean }>("GET", "/api/settings"),
   changeAdminPassword: (old: string, next: string) => req<{ ok: boolean }>("POST", "/api/admin/password", { old, new: next }),
-  setSettings: (change: { autoplay?: boolean; locked?: boolean }) =>
-    req<{ autoplay: boolean; locked: boolean }>("POST", "/api/admin/settings", change),
+  setSettings: (change: { autoplay?: boolean; locked?: boolean; record?: boolean }) =>
+    req<{ autoplay: boolean; locked: boolean; record: boolean }>("POST", "/api/admin/settings", change),
   setMode: (mode: "karaoke" | "jukebox" | "dj") => req<{ mode: string; dj: string }>("POST", "/api/admin/mode", { mode }),
   setDj: (name: string) => req<{ mode: string; dj: string }>("POST", "/api/admin/dj", { name }),
   command: (action: string, value?: number, singer = "") => req("POST", "/api/player/command", { action, value, singer }),

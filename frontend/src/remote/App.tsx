@@ -59,6 +59,7 @@ import { AdminPasswordCard, PlaylistSettingsCard, ScreenCard } from "./SettingsC
 import { DjElected, Turntable } from "./DjElected";
 import { AudienceVote } from "./AudienceVote";
 import { ProfileHistory } from "./ProfileHistory";
+import { MyRecordings } from "./MyRecordings";
 import { EveningStatsEntry, EveningStatsSheet, openedFromQr } from "./EveningStats";
 import { PasswordInput } from "../shared/PasswordInput";
 import { useReorder } from "./useReorder";
@@ -113,6 +114,8 @@ export function App() {
     if (event === "admin_logout") adminCheck().then(setIsAdmin); // password cambiata dal PC
     if (event === "added") added.push(data); // brano entrato in coda (pronto, non più in preparazione)
     if (event === "duet") duet.push(data); // proposta di duetto accettata, rifiutata o annullata
+    if (event === "recording" && data?.name && data.name === nameRef.current)
+      setToast(`Registrazione di «${data.title}» salvata: la trovi nel tuo profilo`);
     if (event === "users") setUsers(Array.isArray(data) ? data : []); // chi è collegato dal telefono
     if (event === "people") setPeople(Array.isArray(data) ? data : []); // nomi nella festa (omonimi)
     if (event === "score" && data.singer && data.singer === nameRef.current)
@@ -601,6 +604,7 @@ function ProfileSheet({
       >
         <div className="m-sheet-title">Il tuo profilo</div>
         <ProfileHistory first={first} last={last} />
+        <MyRecordings first={first} last={last} />
         <PhotoPicker
           preview={preview}
           onPick={setNewPhoto}

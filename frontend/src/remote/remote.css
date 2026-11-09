@@ -2084,3 +2084,37 @@ body {
 .m-profile-score {
   color: #fbbf24;
 }
+
+/* Profilo: registrazioni delle proprie esibizioni */
+.m-recordings {
+  width: 100%;
+}
+.m-recordings-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 4px;
+  color: var(--text-2);
+  font-size: 13px;
+  font-weight: 700;
+}
+.m-recordings ol {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.m-recordings li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border, rgba(255, 255, 255, 0.08));
+  font-size: 14px;
+}
+.m-recordings li > div {
+  flex: 1;
+  min-width: 0;
+}
+.m-recordings .muted {
+  font-size: 12px;
+}

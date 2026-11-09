@@ -89,6 +89,16 @@ export class KaraokeEngine {
   }
 
   /** Ritardo tra l'istante del brano e il suono che esce dalle casse (s). */
+  /** AudioContext del brano (condiviso), per agganciarci la registrazione dell'esibizione. */
+  get context(): AudioContext {
+    return this.ctx;
+  }
+
+  /** Manda quello che esce dalle casse (base + voce guida, al volume attuale) anche a `node`. */
+  tap(node: AudioNode) {
+    this.bass.connect(node);
+  }
+
   get outputLatency(): number {
     return (this.ctx.outputLatency || 0) + (this.ctx.baseLatency || 0);
   }

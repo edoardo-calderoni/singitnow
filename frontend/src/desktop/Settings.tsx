@@ -17,7 +17,7 @@ export function SettingsButton({ onError }: { onError: (m: string) => void }) {
   );
 }
 
-type Key = "autoplay" | "locked";
+type Key = "autoplay" | "locked" | "record";
 
 function SettingsDialog({ onClose, onError }: { onClose: () => void; onError: (m: string) => void }) {
   const [values, setValues] = useState<Record<Key, boolean> | null>(null);
@@ -64,6 +64,12 @@ function SettingsDialog({ onClose, onError }: { onClose: () => void; onError: (m
           desc="Nessuno può aggiungere o chiedere brani, neanche il DJ: solo gli amministratori e il PC gestiscono la playlist."
           value={values?.locked ?? null}
           onChange={(v) => toggle("locked", v)}
+        />
+        <SwitchSetting
+          label="Registra le esibizioni"
+          desc="Voce dei microfoni e base: chi canta la scarica dal suo telefono (Profilo). Sulla TV si vede «REC» mentre registra; si cancellano dopo 60 giorni."
+          value={values?.record ?? null}
+          onChange={(v) => toggle("record", v)}
         />
         <AdminPasswordSetting onToast={onError} />
       </div>

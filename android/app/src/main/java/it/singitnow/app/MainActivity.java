@@ -2,6 +2,8 @@ package it.singitnow.app;
 
 import android.Manifest;
 import android.app.Activity;
+import android.app.DownloadManager;
+import android.content.ContentValues;
 import android.content.ClipData;
 import android.content.Intent;
 import android.content.SharedPreferences;
@@ -21,6 +23,7 @@ import android.net.wifi.WifiManager;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.os.Environment;
 import android.os.Handler;
 import android.os.Looper;
 import android.provider.MediaStore;
@@ -30,6 +33,7 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.webkit.JavascriptInterface;
 import android.webkit.PermissionRequest;
+import android.webkit.URLUtil;
 import android.webkit.ValueCallback;
 import android.webkit.WebChromeClient;
 import android.webkit.WebResourceError;
@@ -38,6 +42,9 @@ import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
 import android.widget.FrameLayout;
+import android.widget.Toast;
+import android.util.Base64;
+import java.io.OutputStream;
 import android.widget.ImageView;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
@@ -128,6 +135,8 @@ public class MainActivity extends Activity {
                 if (req.isForMainFrame()) findServer(false);
             }
         });
+        // file da scaricare (registrazioni delle esibizioni): dentro la WebView un link non basta
+        web.setDownloadListener((url, userAgent, disposition, mime, length) -> download(url, disposition, mime));
         web.setWebChromeClient(new WebChromeClient() {
             @Override
             public void onPermissionRequest(PermissionRequest request) {
@@ -399,7 +408,60 @@ public class MainActivity extends Activity {
         }
     }
 
+    /**
+     * Scarica un file chiesto dalla pagina. Da Android 10 lo fa il sistema (cartella Download, con la
+     * notifica); prima servirebbe il permesso di scrittura: lo si apre nel browser, che lo scarica.
+     */
+    private void download(String url, String disposition, String mime) {
+        if (url == null || !url.startsWith("http")) return;
+        String name = URLUtil.guessFileName(url, disposition, mime);
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            try {
+                DownloadManager.Request req = new DownloadManager.Request(Uri.parse(url))
+                        .setTitle(name)
+                        .setMimeType(mime)
+                        .setNotificationVisibility(DownloadManager.Request.VISIBILITY_VISIBLE_NOTIFY_COMPLETED)
+                        .setDestinationInExternalPublicDir(Environment.DIRECTORY_DOWNLOADS, name);
+                ((DownloadManager) getSystemService(DOWNLOAD_SERVICE)).enqueue(req);
+                Toast.makeText(this, "Scaricamento di «" + name + "» nella cartella Download", Toast.LENGTH_LONG).show();
+                return;
+            } catch (Exception ignored) {
+                // si ripiega sul browser
+            }
+        }
+        try {
+            startActivity(new Intent(Intent.ACTION_VIEW, Uri.parse(url)));
+        } catch (Exception ignored) {
+            Toast.makeText(this, "Download non riuscito", Toast.LENGTH_LONG).show();
+        }
+    }
+
     private class Bridge {
+        /**
+         * Salva un file creato dalla pagina (l'immagine delle statistiche della serata) in
+         * Immagini/SingITnow. Restituisce true se è stato salvato (da Android 10).
+         */
+        @JavascriptInterface
+        public boolean saveFile(String base64, String name, String mime) {
+            if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return false;
+            try {
+                byte[] data = Base64.decode(base64, Base64.DEFAULT);
+                ContentValues v = new ContentValues();
+                v.put(MediaStore.MediaColumns.DISPLAY_NAME, name);
+                v.put(MediaStore.MediaColumns.MIME_TYPE, mime);
+                v.put(MediaStore.MediaColumns.RELATIVE_PATH, Environment.DIRECTORY_PICTURES + "/SingITnow");
+                Uri uri = getContentResolver().insert(MediaStore.Images.Media.EXTERNAL_CONTENT_URI, v);
+                if (uri == null) return false;
+                try (OutputStream out = getContentResolver().openOutputStream(uri)) {
+                    if (out == null) return false;
+                    out.write(data);
+                }
+                return true;
+            } catch (Exception e) {
+                return false;
+            }
+        }
+
         /** La pagina chiede i tasti del volume (amministratore con un brano in corso). */
         @JavascriptInterface
         public void setVolumeKeys(boolean on) {
@@ -408,7 +470,7 @@ public class MainActivity extends Activity {
 
         @JavascriptInterface
         public String version() {
-            return "5";
+            return "6"; // 6: download delle registrazioni e salvataggio delle immagini
         }
 
         /**

@@ -31,6 +31,8 @@ import { enoughSung, PitchScore, results } from "./performance";
 import { ResultItem, showResults } from "./ResultsPanel";
 import { useCompetition } from "../shared/competition";
 import { MicPitch, singingMics } from "./mic";
+import { MIN_RECORD_SECONDS, PerformanceRecorder } from "./recorder";
+import { useSettings } from "../shared/settings";
 import { setApplauseVolume } from "./Applause";
 import { MIC_NAMES, micLabel, useMics, useMicSetter } from "../shared/mics";
 import { correctionText, strengthLabel, useVoice, useVoiceSetter } from "../shared/voice";
@@ -393,6 +395,53 @@ export function Player({ entry, next, waitingNext, onClose, onNext, mini = false
   const onNextRef = useRef(onNext);
   onNextRef.current = onNext;
 
+  // ------------------------------------------------------------ registrazione dell'esibizione
+  // voce dei microfoni + base, poi scaricabile dal telefono di chi canta (settaggio «Registra»)
+  const recordSetting = useSettings()?.record ?? false;
+  const recordOn = recordSetting && !jukebox && !!entry.singer && !outgoing;
+  const recRef = useRef<PerformanceRecorder | null>(null);
+  const [recording, setRecording] = useState(false);
+  const recInfo = useRef({ songId: song.id, singer: entry.singer || "", partner });
+  recInfo.current = { songId: song.id, singer: entry.singer || "", partner };
+  /** Chiude la registrazione: se è abbastanza lunga la manda al PC, altrimenti la butta. */
+  const finishRecording = useCallback((keep: boolean) => {
+    const rec = recRef.current;
+    recRef.current = null;
+    setRecording(false);
+    if (!rec) return;
+    const seconds = rec.seconds;
+    if (!keep || seconds < MIN_RECORD_SECONDS) return rec.cancel();
+    const { songId, singer, partner } = recInfo.current;
+    rec
+      .stop()
+      .then((blob) => blob && api.uploadRecording(blob, songId, seconds, singer, partner))
+      .catch(() => {}); // una registrazione persa non deve disturbare la serata
+  }, []);
+  const finishRecRef = useRef(finishRecording);
+  finishRecRef.current = finishRecording;
+  useEffect(() => {
+    const engine = engineRef.current;
+    if (!recordOn) {
+      if (recRef.current) finishRecording(false);
+      return;
+    }
+    if (!engine) return;
+    if (playing && !recRef.current) {
+      const rec = new PerformanceRecorder(engine);
+      recRef.current = rec;
+      rec
+        .start()
+        .then(() => recRef.current === rec && setRecording(true))
+        .catch(() => {
+          if (recRef.current === rec) recRef.current = null; // microfono non disponibile: niente registrazione
+          rec.cancel();
+        });
+    } else if (playing) recRef.current?.resume();
+    else recRef.current?.pause();
+  }, [playing, recordOn, finishRecording]);
+  // il player si chiude (Stop, brano dopo): quello che si è cantato fin qui si tiene
+  useEffect(() => () => finishRecRef.current(true), []);
+
   // Avviato da solo perché la playlist era ferma: schermo intero
   useEffect(() => {
     if (entry.auto) setFullscreen(true);
@@ -412,6 +461,7 @@ export function Player({ entry, next, waitingNext, onClose, onNext, mini = false
         return;
       }
       setPlaying(false);
+      finishRecRef.current(true); // esibizione finita: la registrazione va al PC
       // si è cantato: pannello dei risultati, e il brano dopo parte solo qualche secondo dopo il voto
       const items = resultsRef.current();
       if (items.length) {
@@ -749,6 +799,11 @@ export function Player({ entry, next, waitingNext, onClose, onNext, mini = false
     >
       <video ref={videoRef} className="player-video" src={song.media!.video} playsInline preload="auto" />
       <div className="player-shade" />
+      {recording && !mini && (
+        <div className="rec-badge" title="Si sta registrando l'esibizione (si scarica dal telefono di chi canta)">
+          <span /> REC
+        </div>
+      )}
 
       {/* finestrella: al passaggio del mouse compaiono play/pausa, schermo intero e chiudi */}
       {mini && (

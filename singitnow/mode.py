@@ -97,8 +97,14 @@ def locked() -> bool:
     return bool(_read().get("locked", False))
 
 
+def record() -> bool:
+    """Settaggio «Registra le esibizioni»: il player registra voce e base di chi canta, che poi la
+    scarica dal telefono. Acceso di default (sulla TV si vede «REC» mentre registra)."""
+    return bool(_read().get("record", True))
+
+
 def settings_public() -> dict:
-    return {"autoplay": autoplay(), "locked": locked()}
+    return {"autoplay": autoplay(), "locked": locked(), "record": record()}
 
 
 def _set(key: str, value) -> dict:
@@ -117,6 +123,10 @@ def set_autoplay(enabled: bool) -> dict:
 
 def set_locked(enabled: bool) -> dict:
     return _set("locked", bool(enabled))
+
+
+def set_record(enabled: bool) -> dict:
+    return _set("record", bool(enabled))
 
 
 def rename_dj(old: str, new: str) -> None:

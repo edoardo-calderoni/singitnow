@@ -16,7 +16,10 @@ from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import __version__, admin, audio, avatars, competition, config, halloffame, mics, mode, names, party, people, stats, wifi, youtube
+from . import (
+    __version__, admin, audio, avatars, competition, config, halloffame, mics, mode, names, party, people, profiles,
+    stats, wifi, youtube,
+)
 from .events import hub
 from .library import READY, library
 from .pipeline import pipeline
@@ -1040,17 +1043,42 @@ def get_avatar(name: str):
 @app.put("/api/avatars/{name}")
 async def put_avatar(name: str, request: Request):
     """Corpo della richiesta: la foto in JPEG (già ritagliata e ridotta dal telefono)."""
+    data = await request.body()
     try:
-        avatars.save(name, await request.body())
+        avatars.save(name, data)
     except ValueError as e:
         raise HTTPException(400, str(e))
+    full = people.full_of(name)
+    if full:
+        profiles.save_photo(*full, data)  # la ritrova anche un'altra sera
     return avatars.public_map()
 
 
 @app.delete("/api/avatars/{name}")
 def delete_avatar(name: str):
     avatars.remove(name)
+    full = people.full_of(name)
+    if full:
+        profiles.remove_photo(*full)
     return avatars.public_map()
+
+
+def _restore_photo(name: str, first: str, last: str) -> None:
+    """Chi torna un'altra sera ritrova la sua foto, anche se ora è chiamato con un altro nome."""
+    if not name or avatars.path(name):
+        return
+    data = profiles.photo(first, last)
+    if data:
+        try:
+            avatars.save(name, data)
+        except ValueError:
+            pass
+
+
+@app.get("/api/profile")
+def get_profile(first: str, last: str = ""):
+    """Profilo di chi usa il telefono: esibizioni di tutte le serate, record personale, ultimi brani."""
+    return profiles.profile(first, last)
 
 
 # ------------------------------------------------------------------ realtime
@@ -1079,7 +1107,9 @@ async def ws(websocket: WebSocket):
                     if isinstance(hello, dict):
                         # nome e cognome: nella festa ci si chiama per nome (con l'iniziale del
                         # cognome solo se c'è un omonimo)
-                        name = people.join(str(hello.get("first") or ""), str(hello.get("last") or ""))
+                        first, last = str(hello.get("first") or ""), str(hello.get("last") or "")
+                        name = people.join(first, last)
+                        _restore_photo(name, first, last)
                     else:
                         name = str(hello or "")  # telefono con l'app vecchia: solo il nome
                     hub.set_name(websocket, name)

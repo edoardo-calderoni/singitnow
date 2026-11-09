@@ -47,6 +47,12 @@ def add(first: str, last: str, song_id: str, title: str, score: int, t: float, s
             log.exception("Salvataggio dei voti non riuscito")
 
 
+def rows() -> list[dict]:
+    """Tutti i voti salvati (copia), per i profili delle persone."""
+    with _lock:
+        return [dict(r) for r in _read()]
+
+
 def _person(r: dict) -> tuple[str, str]:
     # i voti salvati prima del cognome hanno solo "singer"
     return (r.get("first") or r.get("singer") or "", r.get("last") or "")

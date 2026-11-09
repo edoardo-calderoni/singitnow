@@ -10,7 +10,7 @@ from __future__ import annotations
 import threading
 import time
 
-from . import party
+from . import party, people, profiles
 
 _lock = threading.RLock()
 # esibizioni: {id, song_id, title, artist, singer, partner, t, applause, scores: {cantante: voto}}
@@ -21,8 +21,14 @@ def _find(entry_id: str) -> dict | None:
     return next((s for s in reversed(_shows) if s["id"] == entry_id), None)
 
 
+def _full(name: str) -> tuple[str, str]:
+    """(nome, cognome) di chi nella festa si chiama `name` (solo il nome se è stato aggiunto dal PC)."""
+    return people.full_of(name) or (name, "")
+
+
 def started(entry_id: str, song_id: str, title: str, artist: str, singer: str, partner: str = "") -> None:
-    """È partito un brano. Conta come esibizione solo con chi canta (non in Jukebox o senza nome)."""
+    """È partito un brano. Conta come esibizione solo con chi canta (non in Jukebox o senza nome).
+    Finisce anche nello storico del profilo di chi canta (e di chi si è unito nel duetto)."""
     if not singer.strip():
         return
     with _lock:
@@ -34,6 +40,9 @@ def started(entry_id: str, song_id: str, title: str, artist: str, singer: str, p
             "applause": 0, "scores": {},
         })
     party.changed()
+    for me, other in ((singer, partner), (partner, singer)):
+        if me.strip():
+            profiles.performed(*_full(me.strip()), entry_id, song_id, title, artist, other.strip())
 
 
 def applause(entry_id: str) -> None:
@@ -51,6 +60,8 @@ def score(entry_id: str, singer: str, value: int) -> None:
         if s and singer.strip():
             s["scores"][singer.strip()] = int(value)
     party.changed()
+    if singer.strip():
+        profiles.scored(*_full(singer.strip()), entry_id, int(value))
 
 
 def rename(old: str, new: str) -> None:

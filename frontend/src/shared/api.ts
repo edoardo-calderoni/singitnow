@@ -153,6 +153,15 @@ export interface Competition {
   audience_weight?: number;
 }
 
+/** Profilo di una persona, da tutte le serate (nome e cognome scritti sul telefono). */
+export interface Profile {
+  performances: number;
+  first_seen: number | null;
+  best: { score: number; title: string; song_id: string; t: number } | null;
+  favorite: { title: string; count: number } | null;
+  recent: { title: string; artist: string; song_id: string; t: number; score: number | null; partner: string }[];
+}
+
 export interface AudienceVoteState {
   entry_id: string;
   singers: string[];
@@ -308,6 +317,8 @@ export const api = {
   showQr: () => req("POST", "/api/admin/qr"),
   competition: () => req<Competition>("GET", "/api/competition"),
   stats: () => req<import("./stats").EveningStats>("GET", "/api/stats"),
+  profile: (first: string, last: string) =>
+    req<Profile>("GET", `/api/profile?first=${encodeURIComponent(first)}&last=${encodeURIComponent(last)}`),
   statsQr: () => req<{ url: string; qr_svg: string }>("GET", "/api/stats/qr"),
   showStats: () => req("POST", "/api/admin/stats/show"),
   vote: (entry_id: string, voter: string, stars: number) =>

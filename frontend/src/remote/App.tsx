@@ -58,6 +58,7 @@ import { Preparing } from "./Preparing";
 import { AdminPasswordCard, PlaylistSettingsCard, ScreenCard } from "./SettingsCards";
 import { DjElected, Turntable } from "./DjElected";
 import { AudienceVote } from "./AudienceVote";
+import { ProfileHistory } from "./ProfileHistory";
 import { EveningStatsEntry, EveningStatsSheet, openedFromQr } from "./EveningStats";
 import { PasswordInput } from "../shared/PasswordInput";
 import { useReorder } from "./useReorder";
@@ -586,7 +587,7 @@ function ProfileSheet({
   return (
     <div className="m-sheet" onClick={onClose}>
       <form
-        className="m-sheet-card"
+        className="m-sheet-card m-profile-card"
         onClick={(e) => e.stopPropagation()}
         onSubmit={async (e) => {
           e.preventDefault();
@@ -599,6 +600,7 @@ function ProfileSheet({
         }}
       >
         <div className="m-sheet-title">Il tuo profilo</div>
+        <ProfileHistory first={first} last={last} />
         <PhotoPicker
           preview={preview}
           onPick={setNewPhoto}

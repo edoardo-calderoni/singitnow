@@ -100,7 +100,6 @@ Negli ultimi 30 secondi di un brano compare l'annuncio **«Sta per iniziare…»
 
 - **Coda di importazione**: con più brani aggiunti insieme, ognuno mostra (PC e telefono) il suo posto in coda («In coda (3°)») e quando sarà pronto.
 - **Ripresa dopo un crash**: se l'app si chiude a metà serata, al riavvio (entro 8 ore) tornano partecipanti (con gli stessi nomi), classifica della serata e della competizione, statistiche, e il brano che suonava torna in cima alla coda (`data/party.json`). Le prenotazioni restano comunque.
-- **Voto del pubblico** (Competizione): a fine brano, per 40 secondi, gli altri partecipanti votano l'esibizione dal telefono con da 1 a 5 stelle (chi canta non vota sé stesso; si può cambiare voto). Il punteggio in classifica è 70% intonazione + 30% pubblico (5 stelle = 100); sulla TV un banner conta i voti.
 - **Statistiche della serata**: il più applaudito, la miglior intonazione, il duetto migliore e chi ha cantato di più, con i totali. Sulla TV dal pulsante sotto la Competizione o dai *Settaggi* di un amministratore; il QR code apre il riepilogo sul telefono, che lo salva come immagine (anche dal *Live*).
 - **Profili**: chi torna un'altra sera (stesso nome e cognome) trova nel profilo le esibizioni di tutte le serate, il record personale, il brano preferito e gli ultimi brani cantati con il voto; la foto torna da sola (`data/profiles/`).
 - **Registrazioni**: in Karaoke il player registra voce dei microfoni e base; chi ha cantato (anche in duetto) la scarica dal profilo in M4A. Sulla TV si vede «REC»; si spegne nei *Settaggi* («Registra le esibizioni»); si cancellano dopo 60 giorni (`data/recordings/`). Nell'app Android (dalla 1.7) i file vanno nella cartella Download.
@@ -147,7 +146,7 @@ singitnow/          backend Python (FastAPI)
   library.py        libreria su disco (data/library/<id>/)
   playlist.py       coda dei cantanti
   party.py          la serata salvata su disco (ripresa dopo un crash)
-  competition.py    competizione e voto del pubblico
+  competition.py    competizione
   stats.py          statistiche della serata
   profiles.py       profili da una serata all'altra
   recordings.py     registrazioni delle esibizioni

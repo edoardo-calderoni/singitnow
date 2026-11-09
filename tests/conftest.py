@@ -34,11 +34,6 @@ def clean_state():
         if competition._end_timer:
             competition._end_timer.cancel()
         competition._end_timer = None
-        if competition._vote_timer:
-            competition._vote_timer.cancel()
-        competition._vote_timer = None
-        competition._vote = None
-        competition._votes.clear()
     with party._lock:
         if party._timer:
             party._timer.cancel()

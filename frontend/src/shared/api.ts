@@ -111,14 +111,7 @@ export interface Lyrics {
 export interface Standing {
   singer: string;
   average: number;
-  songs: {
-    song_id: string;
-    title: string;
-    score: number; // punteggio del brano (intonazione + pubblico)
-    pitch?: number; // voto d'intonazione
-    audience?: number | null; // media delle stelle del pubblico
-    votes?: number;
-  }[];
+  songs: { song_id: string; title: string; score: number }[];
 }
 /** Persona entrata nella festa: nome, cognome e il nome con cui è chiamata (con l'iniziale se ha un omonimo). */
 export interface Person {
@@ -147,10 +140,6 @@ export interface Competition {
   enabled: boolean;
   active: boolean; // sessione in corso
   standings: Standing[];
-  /** votazione del pubblico aperta sull'esibizione appena finita */
-  vote?: AudienceVoteState | null;
-  /** peso del voto del pubblico nel punteggio del brano (0..1) */
-  audience_weight?: number;
 }
 
 /** Spazio su disco: occupazione dei brani (byte) e totali. */
@@ -197,15 +186,6 @@ export interface Profile {
   best: { score: number; title: string; song_id: string; t: number } | null;
   favorite: { title: string; count: number } | null;
   recent: { title: string; artist: string; song_id: string; t: number; score: number | null; partner: string }[];
-}
-
-export interface AudienceVoteState {
-  entry_id: string;
-  singers: string[];
-  song_id: string;
-  title: string;
-  until: number; // secondi (epoch) a cui si chiude
-  votes: number;
 }
 
 /** Voce dei microfoni gestita da SingITnow (motore audio a bassa latenza) e autotune. */
@@ -393,8 +373,6 @@ export const api = {
     req<Profile>("GET", `/api/profile?first=${encodeURIComponent(first)}&last=${encodeURIComponent(last)}`),
   statsQr: () => req<{ url: string; qr_svg: string }>("GET", "/api/stats/qr"),
   showStats: () => req("POST", "/api/admin/stats/show"),
-  vote: (entry_id: string, voter: string, stars: number) =>
-    req<Competition>("POST", "/api/vote", { entry_id, voter, stars }),
   setCompetition: (enabled: boolean, name = "") => req<Competition>("POST", "/api/admin/competition", { enabled, name }),
   showRanking: () => req("POST", "/api/admin/competition/show"),
   fullscreen: () => req("POST", "/api/admin/fullscreen"),

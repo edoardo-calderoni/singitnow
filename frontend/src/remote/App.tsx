@@ -58,7 +58,6 @@ import { DjRequests } from "./DjRequests";
 import { Preparing } from "./Preparing";
 import { AdminPasswordCard, PlaylistSettingsCard, ScreenCard } from "./SettingsCards";
 import { DjElected, Turntable } from "./DjElected";
-import { AudienceVote } from "./AudienceVote";
 import { ProfileHistory } from "./ProfileHistory";
 import { MyRecordings } from "./MyRecordings";
 import { PlaylistImportSheet } from "./PlaylistImport";
@@ -439,7 +438,6 @@ export function App() {
       {/* proposta di duetto ricevuta: si accetta o si rifiuta (solo in Karaoke) */}
       {!jukebox && <DuetInvite name={name} playlist={playlist} player={player} safe={safe} />}
       <DjElected iAmDj={iAmDj} electedAt={djAt} />
-      <AudienceVote name={name} />
       {statsFromQr && <EveningStatsSheet onClose={closeStatsFromQr} />}
       <ConnectionLost connected={connected} />
     </div>

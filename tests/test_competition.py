@@ -62,38 +62,3 @@ def test_cambio_nome():
     comp.add_score("Marco", "a", "A", 90)
     comp.rename("marco", "Marco R.")
     assert comp.standings()[0]["singer"] == "Marco R."
-
-
-# ------------------------------------------------------------------ voto del pubblico
-def test_voto_del_pubblico_pesa_sul_punteggio():
-    comp.add_score("Anna", "a", "A", 80, entry_id="e1")
-    assert comp.public()["vote"]["entry_id"] == "e1"
-    assert comp.vote("e1", "Bruno", 5) == ""
-    assert comp.vote("e1", "Carla", 3) == ""
-    # 70% intonazione + 30% pubblico (media 4 stelle = 80)
-    assert comp.standings()[0]["average"] == round(0.7 * 80 + 0.3 * 80)
-    comp.vote("e1", "bruno", 1)  # Bruno cambia idea: media 2 stelle = 40
-    song = comp.standings()[0]["songs"][0]
-    assert song["score"] == round(0.7 * 80 + 0.3 * 40)
-    assert song["pitch"] == 80 and song["audience"] == 2.0 and song["votes"] == 2
-
-
-def test_chi_canta_non_vota_se_stesso():
-    comp.add_score("Anna", "a", "A", 80, entry_id="e1", performers=["Anna", "Bruno"])  # duetto
-    assert comp.vote("e1", "anna", 5) == "Non puoi votare la tua esibizione"
-    assert comp.vote("e1", "Bruno", 5) == "Non puoi votare la tua esibizione"
-    assert comp.vote("e1", "Carla", 5) == ""
-
-
-def test_votazione_chiusa():
-    comp.add_score("Anna", "a", "A", 80, entry_id="e1")
-    assert comp.vote("e2", "Bruno", 5) == "La votazione di questa esibizione è chiusa"
-    comp._vote["until"] = 0  # scaduta
-    assert comp.vote("e1", "Bruno", 5) == "La votazione di questa esibizione è chiusa"
-    assert comp.public()["vote"] is None
-    assert comp.standings()[0]["average"] == 80
-
-
-def test_senza_voti_conta_solo_l_intonazione():
-    assert comp.combined(73, []) == 73
-    assert comp.combined(50, [5, 5]) == round(0.7 * 50 + 0.3 * 100)

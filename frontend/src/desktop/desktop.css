@@ -3064,45 +3064,6 @@ body {
   color: var(--text);
 }
 
-/* Competizione: il pubblico vota dal telefono l'esibizione appena finita */
-.vote-banner {
-  position: fixed;
-  left: 50%;
-  bottom: 28px; /* già ingrandito dallo zoom dell'elemento */
-  z-index: 96; /* sopra il pannello del voto di fine brano */
-  transform: translateX(-50%);
-  zoom: var(--ui-zoom, 1);
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  max-width: calc(100vw / var(--ui-zoom, 1) - 32px);
-  padding: 12px 20px;
-  border-radius: 999px;
-  background: rgba(20, 20, 31, 0.92);
-  border: 1px solid var(--border-strong);
-  box-shadow: var(--shadow);
-  font-size: 17px;
-  animation: fade 0.3s ease;
-}
-.vote-banner > svg {
-  color: var(--pink);
-  flex: none;
-}
-.vote-banner .vote-count {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  color: #fbbf24;
-  font-weight: 700;
-  white-space: nowrap;
-}
-.st-audience {
-  margin-left: 4px;
-  color: #fbbf24;
-  font-size: 0.85em;
-  white-space: nowrap;
-}
-
 /* Statistiche della serata */
 .stats-btn {
   align-self: flex-start;

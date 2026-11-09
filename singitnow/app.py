@@ -961,9 +961,7 @@ def add_score(req: ScoreReq):
             stats.score(req.entry_id, entry["singer"], entry["score"])
         ranking = _ranking()
         hub.publish("scores", {"ranking": ranking})
-        comp_pos = competition.add_score(
-            entry["singer"], entry["song_id"], entry["title"], entry["score"], req.entry_id, _performers(req.entry_id)
-        )
+        comp_pos = competition.add_score(entry["singer"], entry["song_id"], entry["title"], entry["score"], req.entry_id)
         first, last = people.full_of(entry["singer"]) or (entry["singer"], "")
         halloffame.add(first, last, entry["song_id"], entry["title"], entry["score"], entry["t"], entry["singer"])
     pos = next((i + 1 for i, r in enumerate(ranking or []) if r["singer"].casefold() == entry["singer"].casefold() and r["score"] == entry["score"]), None)
@@ -979,29 +977,6 @@ def add_score(req: ScoreReq):
         "hall_of_fame": halloffame.for_song(req.song_id),
         "t": entry["t"],
     }
-
-
-def _performers(entry_id: str) -> list[str]:
-    """Chi ha cantato l'esibizione (cantante e, nel duetto, chi si è unito): non può votarla."""
-    e = playlist.now_playing
-    if e and e.id == entry_id:
-        return [n for n in (e.singer, e.partner) if n]
-    return []
-
-
-class VoteReq(BaseModel):
-    entry_id: str
-    voter: str
-    stars: int
-
-
-@app.post("/api/vote")
-def audience_vote(req: VoteReq):
-    """Voto del pubblico dal telefono (Competizione): da 1 a 5 stelle all'esibizione appena finita."""
-    why = competition.vote(req.entry_id, req.voter[:40], req.stars)
-    if why:
-        raise HTTPException(409, why)
-    return competition.public()
 
 
 # ------------------------------------------------------------------ backup della libreria

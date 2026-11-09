@@ -75,11 +75,6 @@ export function StandingsList({ standings, limit, details = true }: { standings:
                 {s.songs.map((song, k) => (
                   <span key={k} className="st-song" title={song.title}>
                     <span className="ellipsis">{song.title}</span> <b>{song.score}</b>
-                    {song.audience != null && (
-                      <span className="st-audience" title={`Pubblico: ${song.votes} voti`}>
-                        ★ {fmtAverage(song.audience)}
-                      </span>
-                    )}
                   </span>
                 ))}
               </div>

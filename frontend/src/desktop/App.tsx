@@ -131,7 +131,12 @@ export function App() {
   const handover = useHandover(nowSong, !jukebox);
   useEffect(() => {
     if (!playingNow) setMini(false);
-    else setWinner(null); // parte una nuova sessione: via la schermata del vincitore
+    else {
+      setWinner(null); // parte una nuova sessione: via la schermata del vincitore
+      // la musica parte da ferma («Avvia playlist», «Avvia ora», dal telefono…): schermo intero.
+      // Fra un brano e l'altro no: se durante la serata si esce con Esc, si resta in finestra.
+      enterFullscreen();
+    }
   }, [playingNow]);
   // Schermo intero in tutta l'app (si parte già a schermo intero): Esc esce, F o F11 lo rimettono.
   // Durante un brano Esc non chiude il brano: si chiude solo con Stop o con la X.

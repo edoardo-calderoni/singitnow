@@ -19,7 +19,7 @@ export function SettingsButton({ onError }: { onError: (m: string) => void }) {
   );
 }
 
-type Key = "autoplay" | "locked" | "record" | "auto_key";
+type Key = "autoplay" | "locked" | "record" | "auto_key" | "quiz";
 
 function SettingsDialog({ onClose, onError }: { onClose: () => void; onError: (m: string) => void }) {
   const [values, setValues] = useState<Record<Key, boolean> | null>(null);
@@ -78,6 +78,12 @@ function SettingsDialog({ onClose, onError }: { onClose: () => void; onError: (m
           desc="In Karaoke ogni brano parte nella tonalità più comoda per chi lo canta, se SingITnow conosce già la sua voce (la impara mentre canta). Chi canta può tornare all'originale dal telefono."
           value={values?.auto_key ?? null}
           onChange={(v) => toggle("auto_key", v)}
+        />
+        <SwitchSetting
+          label="Quiz musicale"
+          desc="In Karaoke, fra un brano e l'altro: la TV fa sentire un pezzo di un brano della libreria e dal telefono si indovina titolo, artista, anno o la parola che viene dopo. Chi indovina per primo guadagna punti in classifica."
+          value={values?.quiz ?? null}
+          onChange={(v) => toggle("quiz", v)}
         />
         <StorageSetting onError={onError} />
         <BackupSetting onError={onError} />

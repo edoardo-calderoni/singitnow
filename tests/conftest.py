@@ -29,6 +29,7 @@ def clean_state():
         library._songs.clear()
     with competition._lock:
         competition._results.clear()
+        competition._bonus.clear()
         competition._active = False
         competition._excluded = ""
         if competition._end_timer:

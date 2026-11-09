@@ -18,6 +18,9 @@ import { CompetitionSwitch, RankingCorner, RankingDialog, WinnerScreen } from ".
 import { Participants } from "./Participants";
 import { EveningStatsPanel, StatsButton } from "./EveningStats";
 import { SettingsButton } from "./Settings";
+import { QuizOverlay } from "./Quiz";
+import { useQuiz } from "../shared/quiz";
+import { useSettings } from "../shared/settings";
 import { LibraryView, SearchView } from "./Views";
 
 type Tab = "library" | "search";
@@ -154,6 +157,33 @@ export function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
   const nextEntry = playlist.entries[0];
+
+  // ------------------------------------------------------------ quiz musicale fra un brano e l'altro
+  const quizOn = useSettings()?.quiz ?? false;
+  const quiz = useQuiz();
+  const quizAfter = useRef<string | null>(null); // brano finito prima del quiz in corso
+  const nowIdRef = useRef<string | undefined>(undefined);
+  nowIdRef.current = now?.id;
+  const goNext = () => safe(() => api.playEntry().catch(() => api.stop()));
+  /** Brano finito (dopo il voto): prima il quiz, se è acceso e si può fare, poi il successivo. */
+  const afterSong = (entryId: string) => {
+    if (!quizOn || jukebox || !nextEntry) return goNext();
+    api
+      .quizStart(entryId, nextEntry.id)
+      .then((r) => {
+        if (r.started) quizAfter.current = entryId;
+        else goNext();
+      })
+      .catch(goNext);
+  };
+  // quiz finito: parte il brano successivo (se nel frattempo nessuno ha cambiato o fermato la musica)
+  useEffect(() => {
+    if (quiz || !quizAfter.current) return;
+    const after = quizAfter.current;
+    quizAfter.current = null;
+    if (nowIdRef.current === after) goNext();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [quiz]);
   // primo brano prenotato ancora in preparazione (con lo stato aggiornato dalla libreria): se la coda
   // finisce prima che sia pronto, la TV lo aspetta con un conto alla rovescia
   const firstWaiting = playlist.waiting[0];
@@ -343,7 +373,7 @@ export function App() {
             waitingNext={waitingNext}
             mixIn={e.id === mixInId}
             onClose={() => safe(() => api.stop())}
-            onNext={() => safe(() => api.playEntry().catch(() => api.stop()))}
+            onNext={() => afterSong(e.id)}
             onPrepareMix={() => nextEntry && setCued(nextEntry)}
             onMixStart={() => {
               // il successivo si sente: il server lo mette in riproduzione, questo sfuma
@@ -384,6 +414,7 @@ export function App() {
       <RequestToasts items={requests.items} bottom={!nowSong} />
       <HandoverBanner pass={handover} />
       <ResultsHost />
+      <QuizOverlay />
       {/* sottofondo della schermata principale: sfuma quando parte la playlist */}
       <BackgroundMusic active={!splash && !now && !resultsOpen && !winner} />
       {splash && <Splash onDone={splashDone} />}

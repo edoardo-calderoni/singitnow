@@ -45,6 +45,7 @@ class Song:
     confirmed: bool = False  # artista e titolo confermati da chi l'ha importato: il download non li cambia
     created_at: float = field(default_factory=time.time)
     played_at: float = 0.0  # ultima volta che è stato riprodotto (0 = mai)
+    year: int = 0  # anno di uscita (da iTunes, per il quiz): 0 = non cercato, -1 = non trovato
 
     @property
     def recent(self) -> float:

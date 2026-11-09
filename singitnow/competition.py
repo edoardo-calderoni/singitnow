@@ -26,6 +26,23 @@ _results: list[dict] = []  # {singer, song_id, title, score, t}
 _active = False  # sessione in corso
 _excluded = ""  # brano (voce della playlist) in corso quando la competizione è stata accesa: non conta
 _end_timer: threading.Timer | None = None
+_bonus: dict[str, dict] = {}  # quiz musicale: casefold(nome) -> {"name", "points"} (sessione in corso)
+
+QUIZ_POINTS = 2  # punti aggiunti alla media per ogni risposta esatta al quiz
+QUIZ_MAX = 6  # al massimo, in una sessione: il quiz aiuta ma non ribalta la classifica del canto
+
+
+def quiz_point(name: str) -> int:
+    """Risposta esatta al quiz: punti in più sulla media (solo in competizione). Restituisce i punti dati."""
+    name = name.strip()
+    if not name or not enabled():
+        return 0
+    with _lock:
+        b = _bonus.setdefault(name.casefold(), {"name": name, "points": 0})
+        given = max(0, min(QUIZ_POINTS, QUIZ_MAX - b["points"]))
+        b["points"] += given
+    _publish()
+    return given
 
 
 def _settings_path():
@@ -71,10 +88,11 @@ def standings() -> list[dict]:
             p = people.setdefault(k, {"singer": r["singer"], "songs": [], "first": r["t"]})
             p["songs"].append({"song_id": r["song_id"], "title": r["title"], "score": r["score"]})
         out = []
-        for p in people.values():
+        for k, p in people.items():
             scores = [s["score"] for s in p["songs"]]
-            avg = sum(scores) / len(scores)
-            out.append({"singer": p["singer"], "average": round(avg, 1), "songs": p["songs"], "first": p["first"]})
+            bonus = _bonus.get(k, {}).get("points", 0)
+            avg = min(100.0, sum(scores) / len(scores) + bonus)
+            out.append({"singer": p["singer"], "average": round(avg, 1), "songs": p["songs"], "first": p["first"], "quiz": bonus})
         # a pari media vince chi ha cantato per primo
         out.sort(key=lambda p: (-p["average"], p["first"]))
         for p in out:
@@ -94,7 +112,7 @@ def _publish() -> None:
 
 def _dump() -> dict:
     with _lock:
-        return {"results": list(_results)}
+        return {"results": list(_results), "bonus": dict(_bonus)}
 
 
 def _load(data: dict) -> None:
@@ -102,6 +120,8 @@ def _load(data: dict) -> None:
     quindi la sessione è finita: il prossimo brano ne comincia una nuova)."""
     with _lock:
         _results[:] = [r for r in data.get("results", []) if isinstance(r, dict) and r.get("singer")]
+        _bonus.clear()
+        _bonus.update({k: v for k, v in (data.get("bonus") or {}).items() if isinstance(v, dict)})
 
 
 party.register("competition", _dump, _load)
@@ -133,6 +153,7 @@ def on_playing(playing: bool) -> None:
                 _active = True
                 _excluded = ""
                 _results.clear()  # nuova sessione: classifica vuota
+                _bonus.clear()
                 _publish()
         elif _active and _end_timer is None:
             _end_timer = threading.Timer(END_DELAY, _finish)

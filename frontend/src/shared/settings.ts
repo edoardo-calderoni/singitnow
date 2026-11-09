@@ -6,13 +6,14 @@ export interface Settings {
   locked: boolean; // «Blocca inserimenti»: aggiungono brani solo il PC e gli amministratori
   record: boolean; // «Registra le esibizioni»
   auto_key: boolean; // «Adatta la tonalità automaticamente»
+  quiz: boolean; // «Quiz musicale» fra un brano e l'altro
 }
 
 let settings: Settings | null = null; // null finché il PC non li ha comunicati
 const subs = new Set<() => void>();
 
 export function setSettings(s: Settings) {
-  settings = { autoplay: !!s?.autoplay, locked: !!s?.locked, record: !!s?.record, auto_key: !!s?.auto_key };
+  settings = { autoplay: !!s?.autoplay, locked: !!s?.locked, record: !!s?.record, auto_key: !!s?.auto_key, quiz: !!s?.quiz };
   subs.forEach((f) => f());
 }
 

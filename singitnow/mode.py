@@ -109,8 +109,14 @@ def auto_key() -> bool:
     return bool(_read().get("auto_key", False))
 
 
+def quiz() -> bool:
+    """Settaggio «Quiz musicale»: in Karaoke, fra un brano e l'altro, un quiz sui brani della libreria.
+    Spento di default."""
+    return bool(_read().get("quiz", False))
+
+
 def settings_public() -> dict:
-    return {"autoplay": autoplay(), "locked": locked(), "record": record(), "auto_key": auto_key()}
+    return {"autoplay": autoplay(), "locked": locked(), "record": record(), "auto_key": auto_key(), "quiz": quiz()}
 
 
 def _set(key: str, value) -> dict:
@@ -137,6 +143,10 @@ def set_record(enabled: bool) -> dict:
 
 def set_auto_key(enabled: bool) -> dict:
     return _set("auto_key", bool(enabled))
+
+
+def set_quiz(enabled: bool) -> dict:
+    return _set("quiz", bool(enabled))
 
 
 def rename_dj(old: str, new: str) -> None:

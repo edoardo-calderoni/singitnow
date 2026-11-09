@@ -1,3 +1,4 @@
+import { setQuiz } from "./quiz";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api, PlayerState, PlaylistState, Song } from "./api";
 import { setAvatars } from "./Avatar";
@@ -56,6 +57,7 @@ export function useLive(onEvent?: Listener) {
     const refresh = () => {
       api.songs().then(setSongs).catch(() => {});
       api.playlist().then(setPlaylist).catch(() => {});
+      api.quiz().then((q) => setQuiz(q as never)).catch(() => {});
     };
 
     const connect = () => {
@@ -113,6 +115,8 @@ export function useLive(onEvent?: Listener) {
           publishVoice(data);
         } else if (event === "competition") {
           setCompetition(data);
+        } else if (event === "quiz") {
+          setQuiz(data);
         } else if (event === "mics") {
           publishMics(data?.mics ?? []);
         } else if (event === "player_state") {

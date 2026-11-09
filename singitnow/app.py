@@ -19,7 +19,7 @@ from pydantic import BaseModel
 
 from . import (
     __version__, admin, audio, avatars, backup, competition, config, halloffame, mics, mode, names, party, people,
-    keyfit, profiles,
+    keyfit, profiles, quiz,
     recordings, stats, storage, wifi, youtube,
 )
 from .events import hub
@@ -46,6 +46,8 @@ async def lifespan(app: FastAPI):
     pipeline.backfill_pitch()
     pipeline.backfill_voice_snap()
     pipeline.backfill_beats()
+    if mode.quiz():
+        quiz.fill_years()
     threading.Thread(target=recordings.cleanup, name="pulizia-registrazioni", daemon=True).start()
     # voce dei microfoni gestita da SingITnow (autotune): il motore audio parte se è stato scelto
     threading.Thread(target=voice.apply, name="voce-avvio", daemon=True).start()
@@ -775,6 +777,7 @@ class SettingsReq(BaseModel):
     locked: bool | None = None
     record: bool | None = None
     auto_key: bool | None = None
+    quiz: bool | None = None
 
 
 @app.get("/api/settings")
@@ -791,10 +794,55 @@ def set_settings(req: SettingsReq):
         mode.set_locked(req.locked)
     if req.record is not None:
         mode.set_record(req.record)
+    if req.quiz is not None:
+        mode.set_quiz(req.quiz)
+        if req.quiz:
+            quiz.fill_years()  # anno di uscita dei brani (per le domande sull'anno)
     if req.auto_key is not None:
         mode.set_auto_key(req.auto_key)
         hub.publish("playlist", playlist.snapshot())  # cambia la tonalità in cui partiranno i brani
     return mode.settings_public()
+
+
+# ------------------------------------------------------------------ quiz musicale
+class QuizStartReq(BaseModel):
+    after: str  # brano appena finito (voce della playlist)
+    next: str = ""  # brano che partirà dopo il quiz
+
+
+@app.post("/api/quiz/start", dependencies=[Depends(admin.require_control)])
+def quiz_start(req: QuizStartReq):
+    """Il player sulla TV, fra un brano e l'altro: parte il quiz (se è acceso e si può fare)."""
+    exclude = {e.song_id for e in (playlist.now_playing, *playlist._entries[:1]) if e}
+    return {"started": quiz.start(req.after, exclude)}
+
+
+@app.get("/api/quiz")
+def quiz_state():
+    return quiz.public()
+
+
+@app.get("/api/quiz/clip", dependencies=[Depends(admin.require_control)])
+def quiz_clip():
+    """Audio del brano del quiz per la TV (senza svelare quale brano sia: niente id nell'indirizzo)."""
+    path = quiz.clip_path()
+    if not path or not path.exists():
+        raise HTTPException(404)
+    return FileResponse(path, media_type="video/mp4", headers={"Cache-Control": "no-store"})
+
+
+class QuizAnswerReq(BaseModel):
+    name: str
+    choice: int
+
+
+@app.post("/api/quiz/answer")
+def quiz_answer(req: QuizAnswerReq):
+    """Risposta dal telefono: vale la prima; la prima esatta chiude la domanda."""
+    error = quiz.answer(req.name, req.choice)
+    if error:
+        raise HTTPException(409, error)
+    return quiz.public()
 
 
 # ------------------------------------------------------------------ tonalità consigliata

@@ -11,7 +11,7 @@ import { useSettings } from "../shared/settings";
 export function PlaylistSettingsCard() {
   const settings = useSettings(); // aggiornati in tempo reale anche se li cambia il PC
   const [error, setError] = useState("");
-  const set = (change: { autoplay?: boolean; locked?: boolean; auto_key?: boolean }) =>
+  const set = (change: { autoplay?: boolean; locked?: boolean; auto_key?: boolean; quiz?: boolean }) =>
     api
       .setSettings(change)
       .then(() => setError(""))
@@ -36,6 +36,12 @@ export function PlaylistSettingsCard() {
         desc="In Karaoke ogni brano parte nella tonalità più comoda per chi lo canta, se SingITnow conosce già la sua voce."
         value={settings?.auto_key ?? null}
         onChange={(v) => set({ auto_key: v })}
+      />
+      <SwitchRow
+        label="Quiz musicale"
+        desc="In Karaoke, fra un brano e l'altro: un pezzo di un brano della libreria e tre risposte sul telefono. Chi indovina per primo guadagna punti."
+        value={settings?.quiz ?? null}
+        onChange={(v) => set({ quiz: v })}
       />
       {error && <div className="m-admin-err">{error}</div>}
     </div>

@@ -39,6 +39,7 @@ import {
 import { LivePlayer, setPresence, useLive } from "../shared/live";
 import { useDj, useDjAt, useJukebox, useMode } from "../shared/mode";
 import { useSettings } from "../shared/settings";
+import { QuizScreen } from "./Quiz";
 import { useYoutubeSearch } from "../shared/search";
 import { openExternal } from "../shared/external";
 import {
@@ -400,6 +401,7 @@ export function App() {
           </button>
         )}
       </nav>
+      {!jukebox && <QuizScreen name={name} />}
       {!jukebox && <GetReadyAlert
         name={name}
         playlist={playlist}

@@ -27,9 +27,7 @@ def _norm(text: str) -> str:
     return " ".join("".join(ch if ch.isalnum() else " " for ch in text).split())
 
 
-def find_cover_url(artist: str, title: str) -> str | None:
-    if not title:
-        return None
+def _search(artist: str, title: str) -> list[dict] | None:
     try:
         r = httpx.get(
             ITUNES,
@@ -41,6 +39,33 @@ def find_cover_url(artist: str, title: str) -> str | None:
         results = r.json().get("results", [])
     except (httpx.HTTPError, ValueError) as e:
         log.info("Copertina non disponibile (%s)", e)
+        return None
+    return results
+
+
+def find_year(artist: str, title: str) -> int | None:
+    """Anno di uscita: la pubblicazione più vecchia dello stesso brano dello stesso artista
+    (le raccolte e le ristampe escono dopo l'originale)."""
+    if not title or not artist:
+        return None
+    results = _search(artist, title) or []
+    want_title, want_artist = _norm(title), _norm(artist)
+    years = []
+    for x in results:
+        t, a = _norm(x.get("trackName", "")), _norm(x.get("artistName", ""))
+        if t != want_title or not (want_artist in a or a in want_artist):
+            continue
+        m = re.match(r"(\d{4})", x.get("releaseDate", ""))
+        if m and 1900 < int(m.group(1)) < 2100:
+            years.append(int(m.group(1)))
+    return min(years) if years else None
+
+
+def find_cover_url(artist: str, title: str) -> str | None:
+    if not title:
+        return None
+    results = _search(artist, title)
+    if results is None:
         return None
 
     want_title, want_artist = _norm(title), _norm(artist)

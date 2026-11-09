@@ -2174,3 +2174,220 @@ body {
   gap: 10px;
   font-size: 14px;
 }
+
+/* ---------- quiz musicale */
+.m-quiz {
+  position: fixed;
+  inset: 0;
+  z-index: 300;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: max(16px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom));
+  background: radial-gradient(circle at 50% 20%, rgba(139, 92, 246, 0.45), rgba(8, 8, 16, 0.98) 70%);
+  overflow-y: auto;
+  text-align: center;
+}
+.m-quiz-badge {
+  align-self: center;
+  padding: 5px 14px;
+  border-radius: 999px;
+  background: var(--grad);
+  font-family: var(--font-display);
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  font-size: 13px;
+}
+.m-quiz-intro {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 18px;
+  color: var(--text-2);
+}
+.m-quiz-count {
+  width: 130px;
+  height: 130px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  border: 6px solid #fff;
+  font-family: var(--font-display);
+  font-size: 72px;
+  font-weight: 900;
+  color: var(--text);
+  box-shadow: 0 0 40px rgba(139, 92, 246, 0.8);
+  animation: m-quiz-tick 1s ease-out both;
+}
+@keyframes m-quiz-tick {
+  0% {
+    transform: scale(1.5);
+    opacity: 0;
+  }
+  25% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+.m-quiz-q {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 22px;
+  line-height: 1.2;
+}
+.m-quiz-timer {
+  height: 8px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.1);
+  overflow: hidden;
+}
+.m-quiz-timer div {
+  height: 100%;
+  background: var(--grad);
+  transition: width 0.25s linear;
+}
+.m-quiz-options {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-height: 0;
+}
+.m-quiz-opt {
+  --c: var(--pink);
+  flex: 1;
+  min-height: 92px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+  border-radius: 20px;
+  border: 3px solid color-mix(in srgb, var(--c) 75%, transparent);
+  background: color-mix(in srgb, var(--c) 22%, var(--surface));
+  color: var(--text);
+  text-align: left;
+  font: inherit;
+  transition: transform 0.2s, opacity 0.3s, filter 0.3s;
+}
+.m-quiz-opt.opt-1 {
+  --c: var(--violet);
+}
+.m-quiz-opt.opt-2 {
+  --c: var(--cyan);
+}
+.m-quiz-opt:active:not(:disabled) {
+  transform: scale(0.97);
+}
+.m-quiz-opt:disabled {
+  cursor: default;
+}
+.m-quiz-opt.mine {
+  outline: 4px solid #fff;
+  transform: scale(1.02);
+}
+.m-quiz-opt.off,
+.m-quiz-opt.wrong {
+  opacity: 0.4;
+  filter: grayscale(0.6);
+}
+.m-quiz-opt.right {
+  --c: var(--green);
+  opacity: 1;
+  filter: none;
+  box-shadow: 0 0 30px rgba(52, 211, 153, 0.6);
+  animation: m-quiz-right 0.7s ease both;
+}
+@keyframes m-quiz-right {
+  40% {
+    transform: scale(1.06);
+  }
+}
+.m-quiz-letter {
+  flex: none;
+  width: 46px;
+  height: 46px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--c);
+  font-family: var(--font-display);
+  font-weight: 900;
+  font-size: 24px;
+}
+.m-quiz-text {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 21px;
+  line-height: 1.15;
+  overflow-wrap: anywhere;
+}
+.m-quiz-msg {
+  color: var(--text-2);
+  font-size: 14px;
+}
+.m-quiz-msg.err {
+  color: var(--red);
+}
+.m-quiz-result {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  font-size: 16px;
+}
+.m-quiz-result.won {
+  animation: m-quiz-won 0.8s cubic-bezier(0.2, 1.6, 0.4, 1) both;
+  color: var(--amber);
+  font-weight: 700;
+}
+@keyframes m-quiz-won {
+  from {
+    transform: scale(0.3);
+    opacity: 0;
+  }
+}
+.m-quiz-big {
+  font-family: var(--font-display);
+  font-size: 30px;
+  font-weight: 900;
+}
+.m-quiz-wavatar {
+  width: 56px;
+  height: 56px;
+  outline: 3px solid var(--amber);
+}
+.m-quiz-song {
+  color: var(--text-2);
+  font-size: 13px;
+  font-weight: 400;
+}
+.m-quiz-ranking ol {
+  list-style: none;
+  margin: 12px 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.m-quiz-ranking li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-radius: 14px;
+  background: var(--surface-2);
+}
+.m-quiz-ranking li.me {
+  outline: 2px solid var(--pink);
+}
+.m-quiz-ranking li .avatar {
+  width: 34px;
+  height: 34px;
+}
+.m-quiz-rname {
+  flex: 1;
+  text-align: left;
+  font-weight: 700;
+}

@@ -8,7 +8,7 @@ import time
 import uuid
 from dataclasses import asdict, dataclass, field
 
-from . import competition, config, keyfit, mode, people, stats
+from . import competition, config, keyfit, mode, people, quiz, stats
 from .events import hub
 from .library import READY, Song, library
 
@@ -92,6 +92,7 @@ class Playlist:
         self._save()
         hub.publish("playlist", self.snapshot())
         competition.on_playing(self.now_playing is not None)  # inizio/fine della sessione
+        quiz.on_playlist(self.now_playing.id if self.now_playing else None)
 
     def _mark_played(self) -> None:
         """Il brano appena partito diventa il più recente della libreria (ordine «ultimi suonati»)."""

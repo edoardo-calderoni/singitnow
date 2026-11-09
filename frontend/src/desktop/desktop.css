@@ -3066,8 +3066,10 @@ body {
 
 /* Statistiche della serata */
 .stats-btn {
-  align-self: flex-start;
-  margin-top: 6px;
+  /* centrato sotto la Competizione, un po' staccato dall'interruttore */
+  display: flex;
+  width: fit-content;
+  margin: 14px auto 0;
 }
 .modal.stats-modal {
   width: min(920px, 100%);

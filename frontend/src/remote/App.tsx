@@ -5,6 +5,7 @@ import {
   Clock,
   Library,
   ListMusic,
+  ListPlus,
   Loader2,
   Plus,
   Search,
@@ -60,6 +61,8 @@ import { DjElected, Turntable } from "./DjElected";
 import { AudienceVote } from "./AudienceVote";
 import { ProfileHistory } from "./ProfileHistory";
 import { MyRecordings } from "./MyRecordings";
+import { PlaylistImportSheet } from "./PlaylistImport";
+import { onlyPlaylist, playlistId } from "../shared/ytPlaylist";
 import { EveningStatsEntry, EveningStatsSheet, openedFromQr } from "./EveningStats";
 import { PasswordInput } from "../shared/PasswordInput";
 import { useReorder } from "./useReorder";
@@ -322,7 +325,7 @@ export function App() {
           <LibraryTab songs={songs} name={name} safe={safe} goAdd={() => setTab("search")} />
         )}
         {tab === "search" && (
-          <SearchTab songs={songs} name={name} safe={safe} onBack={() => setTab("library")} />
+          <SearchTab songs={songs} name={name} safe={safe} isAdmin={isAdmin} onToast={setToast} onBack={() => setTab("library")} />
         )}
         {/* modalità DJ: tutte le richieste ricevute, da accettare o rifiutare */}
         {tab === "requests" && actsAsDj && (
@@ -984,13 +987,19 @@ function SearchTab({
   songs,
   name,
   safe,
+  isAdmin,
+  onToast,
   onBack,
 }: {
   songs: Song[];
   name: string;
   safe: Safe;
+  isAdmin: boolean;
+  onToast: (m: string) => void;
   onBack: () => void;
 }) {
+  // amministratori: link di una playlist di YouTube, si sceglie quali brani importare
+  const [plUrl, setPlUrl] = useState("");
   const { addedMsg, preparingMsg } = useAddMessages(name);
   const [q, setQ] = useState("");
   // gli errori passano da safe(), che li mostra come avviso
@@ -1024,6 +1033,10 @@ function SearchTab({
             value={q}
             onChange={(e) => {
               setQ(e.target.value);
+              if (isAdmin && onlyPlaylist(e.target.value) && playlistId(e.target.value) !== playlistId(q)) {
+                setPlUrl(e.target.value);
+                return;
+              }
               // link incollato: si cerca subito quel video
               const id = youtubeId(e.target.value);
               if (id && id !== youtubeId(q)) run(e.target.value);
@@ -1034,6 +1047,12 @@ function SearchTab({
           {busy ? <Loader2 size={16} className="spin" /> : <Search size={16} />}
         </button>
       </form>
+      {isAdmin && playlistId(q) && (
+        <button type="button" className="btn btn-ghost btn-block m-plimport-hint" onClick={() => setPlUrl(q)}>
+          <ListPlus size={16} /> È una playlist: scegli i brani da importare
+        </button>
+      )}
+      {plUrl && <PlaylistImportSheet url={plUrl} name={name} onClose={() => setPlUrl("")} onDone={onToast} />}
       {results === null && (
         <div className="empty">
           <h3>Non trovi la tua canzone?</h3>

@@ -2118,3 +2118,46 @@ body {
 .m-recordings .muted {
   font-size: 12px;
 }
+
+/* Amministratori: importazione di una playlist di YouTube */
+.m-plimport-hint {
+  margin-bottom: 10px;
+}
+.m-plimport {
+  align-items: stretch;
+  max-height: calc(100dvh - 32px);
+}
+.m-plimport-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 13px;
+}
+.m-plimport-list {
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  overflow-y: auto;
+}
+.m-plimport-list label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 2px;
+  border-bottom: 1px solid var(--border, rgba(255, 255, 255, 0.08));
+  font-size: 14px;
+}
+.m-plimport-list input,
+.m-plimport-queue input {
+  flex: none;
+  width: 18px;
+  height: 18px;
+}
+.m-plimport-queue {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 14px;
+}

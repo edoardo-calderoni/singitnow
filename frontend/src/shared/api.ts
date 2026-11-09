@@ -313,6 +313,14 @@ export const api = {
   search: (q: string, limit = 12) =>
     req<SearchResult[]>("GET", `/api/search?q=${encodeURIComponent(q)}&limit=${limit}`),
   /** Importa un video. artist/name: artista e titolo confermati da chi importa (i refusi li corregge il PC). */
+  youtubePlaylist: (url: string) =>
+    req<import("./ytPlaylist").YtPlaylist>("GET", `/api/youtube-playlist?url=${encodeURIComponent(url)}`, undefined, 90000),
+  importYoutubePlaylist: (items: SearchResult[], queue: boolean, singer = "") =>
+    req<{ added: number }>("POST", "/api/youtube-playlist/import", {
+      items: items.map((r) => ({ youtube_id: r.youtube_id, title: r.title, channel: r.channel, duration: r.duration })),
+      queue,
+      singer,
+    }),
   download: (r: SearchResult, singer = "", artist = "", name = "") =>
     req<Song>("POST", "/api/download", {
       youtube_id: r.youtube_id,

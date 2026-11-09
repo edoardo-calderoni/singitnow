@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 import threading
 from pathlib import Path
 from contextlib import asynccontextmanager
@@ -333,6 +334,52 @@ def download(req: DownloadReq, request: Request, x_admin_token: str | None = Hea
     elif req.singer.strip():
         playlist.add(song.id, req.singer, autostart=_autostart(request, x_admin_token), from_pc=admin.is_local(request))
     return song.to_public()
+
+
+# ------------------------------------------------------------------ playlist di YouTube
+@app.get("/api/youtube-playlist", dependencies=[Depends(admin.require_control)])
+async def youtube_playlist(url: str):
+    """Brani di una playlist di YouTube (link incollato nella ricerca), con lo stato in libreria."""
+    list_id = youtube.playlist_id_from_url(url)
+    if not list_id:
+        raise HTTPException(422, "Non è il link di una playlist di YouTube")
+    try:
+        pl = await run_in_threadpool(youtube.playlist, list_id)
+    except Exception as e:
+        log.warning("Playlist %s non disponibile: %s", list_id, e)
+        raise HTTPException(404, "Playlist non disponibile: controlla il link (potrebbe essere privata)")
+    for r in pl["entries"]:
+        s = library.get(r["youtube_id"])
+        r["in_library"] = s.status if s else None
+    return pl
+
+
+class PlaylistItem(BaseModel):
+    youtube_id: str
+    title: str = ""
+    channel: str = ""
+    duration: float = 0
+
+
+class PlaylistImportReq(BaseModel):
+    items: list[PlaylistItem]
+    queue: bool = False  # mettili anche nella playlist della serata (entrano quando sono pronti)
+    singer: str = ""
+
+
+@app.post("/api/youtube-playlist/import", dependencies=[Depends(admin.require_control)])
+def import_youtube_playlist(req: PlaylistImportReq, request: Request):
+    """Importa i brani scelti di una playlist di YouTube (artista e titolo ricavati dal video)."""
+    added = 0
+    for it in req.items[: youtube.PLAYLIST_MAX]:
+        if not re.fullmatch(r"[A-Za-z0-9_-]{11}", it.youtube_id):
+            continue
+        artist, name = names.guess(it.title, it.channel)
+        song = pipeline.enqueue(it.youtube_id, it.title, it.channel, it.duration, artist[:120], name[:160])
+        if req.queue:
+            playlist.add(song.id, req.singer, autostart=False, from_pc=admin.is_local(request))
+        added += 1
+    return {"added": added}
 
 
 # ------------------------------------------------------------------ playlist / player

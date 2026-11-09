@@ -13,6 +13,7 @@ import {
   MonitorPlay,
   Plus,
   ArrowLeft,
+  ListPlus,
   ChevronDown,
   X,
 } from "lucide-react";
@@ -31,6 +32,8 @@ import {
 } from "../shared/api";
 import { Avatar } from "../shared/Avatar";
 import { ImportDialog } from "./Dialogs";
+import { PlaylistImportDialog } from "./PlaylistImport";
+import { onlyPlaylist, playlistId } from "../shared/ytPlaylist";
 import { useYoutubeSearch } from "../shared/search";
 import { openExternal } from "../shared/external";
 
@@ -250,6 +253,10 @@ export function SearchView({
     search.run(text);
   };
 
+  // link di una playlist di YouTube: si sceglie quali brani importare
+  const [plUrl, setPlUrl] = useState("");
+  const isPlaylist = !!playlistId(q);
+
   // prima di importare si confermano artista e titolo (servono a trovare il testo giusto)
   const [importing, setImporting] = useState<SearchResult | null>(null);
   const add = (r: SearchResult) => setImporting(r);
@@ -284,6 +291,11 @@ export function SearchView({
             value={q}
             onChange={(e) => {
               setQ(e.target.value);
+              // link di una playlist (senza un video): si apre subito l'elenco dei suoi brani
+              if (onlyPlaylist(e.target.value) && playlistId(e.target.value) !== playlistId(q)) {
+                setPlUrl(e.target.value);
+                return;
+              }
               // link incollato: si cerca subito quel video, senza premere Cerca
               const id = youtubeId(e.target.value);
               if (id && id !== youtubeId(q)) run(undefined, e.target.value);
@@ -294,6 +306,15 @@ export function SearchView({
           {busy ? <Loader2 size={18} className="spin" /> : <Search size={18} />} Cerca
         </button>
       </form>
+      {isPlaylist && (
+        <div className="plimport-hint">
+          <ListPlus size={18} /> È il link di una playlist di YouTube
+          <button className="btn btn-primary btn-sm" onClick={() => setPlUrl(q)}>
+            Scegli i brani da importare
+          </button>
+        </div>
+      )}
+      {plUrl && <PlaylistImportDialog url={plUrl} onClose={() => setPlUrl("")} onToast={onToast} />}
 
       <div className="view-scroll">
       {results === null ? (

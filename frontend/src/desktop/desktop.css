@@ -3290,3 +3290,64 @@ body {
   display: flex;
   gap: 2px;
 }
+
+/* Importazione di una playlist di YouTube */
+.plimport-hint {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 12px;
+  padding: 10px 14px;
+  border-radius: 14px;
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  font-weight: 600;
+}
+.plimport-hint button {
+  margin-left: auto;
+}
+.modal.plimport-modal {
+  width: min(760px, 100%);
+}
+.plimport-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.plimport-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  max-height: 46vh;
+  overflow-y: auto;
+}
+.plimport-list label {
+  display: flex !important;
+  flex-direction: row !important;
+  align-items: center;
+  gap: 10px !important;
+  padding: 6px 2px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text) !important;
+  font-size: 14px !important;
+  font-weight: 400 !important;
+  cursor: pointer;
+}
+.plimport-list img {
+  width: 64px;
+  height: 36px;
+  flex: none;
+  object-fit: cover;
+  border-radius: 6px;
+}
+.plimport-title {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.plimport-queue {
+  flex-direction: row !important;
+  align-items: center;
+  gap: 8px !important;
+  font-size: 14px !important;
+}

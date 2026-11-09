@@ -121,6 +121,40 @@ def video_id_from_url(text: str) -> str | None:
     return m.group(1) if m else None
 
 
+_LIST_ID = re.compile(r"[?&]list=([A-Za-z0-9_-]{10,})")
+PLAYLIST_MAX = 200  # brani letti al massimo da una playlist
+
+
+def playlist_id_from_url(text: str) -> str | None:
+    """ID della playlist se `text` è un link di YouTube con una playlist (?list=…), altrimenti None.
+    I «Mix» generati da YouTube (RD…) sono infiniti e diversi per ognuno: non si importano."""
+    m = _LIST_ID.search(text.strip()) if re.search(r"youtu\.?be", text, re.I) else None
+    return m.group(1) if m and not m.group(1).startswith("RD") else None
+
+
+def playlist(list_id: str) -> dict[str, Any]:
+    """Titolo e video di una playlist (al massimo PLAYLIST_MAX), nel formato dei risultati di ricerca."""
+    opts = _base_opts() | {"extract_flat": "in_playlist", "skip_download": True, "playlistend": PLAYLIST_MAX}
+    with yt_dlp.YoutubeDL(opts) as ydl:
+        info = ydl.extract_info(f"https://www.youtube.com/playlist?list={list_id}", download=False)
+    entries = []
+    for e in (info or {}).get("entries") or []:
+        if not e or not e.get("id") or len(e["id"]) != 11:
+            continue
+        title = e.get("title") or ""
+        if title in ("[Private video]", "[Deleted video]") or e.get("live_status") == "is_live":
+            continue  # video privati o rimossi, dirette
+        entries.append({
+            "youtube_id": e["id"],
+            "title": title,
+            "channel": e.get("channel") or e.get("uploader") or "",
+            "duration": e.get("duration") or 0,
+            "thumbnail": _best_thumbnail(e),
+            "url": f"https://www.youtube.com/watch?v={e['id']}",
+        })
+    return {"id": list_id, "title": (info or {}).get("title") or "Playlist", "entries": entries}
+
+
 def video_info(video_id: str) -> dict[str, Any]:
     """Dati di un singolo video (da un link incollato), nello stesso formato dei risultati di ricerca."""
     opts = _base_opts() | {"skip_download": True, "noplaylist": True}

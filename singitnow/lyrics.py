@@ -37,6 +37,7 @@ class Word:
     end: float = -1.0
     onset: bool = False  # Whisper l'ha sentita attaccare dopo una pausa (tempo d'inizio affidabile)
     run: int = 0  # abbinata dentro una sequenza di quante parole consecutive (1 = parola isolata)
+    hold: float = -1.0  # istante in cui la parola è pronunciata e comincia la nota tenuta (-1: nessuna)
     orig: str = ""  # testo originale (kana/kanji) quando `text` è la sua trascrizione in romaji
 
 
@@ -850,8 +851,9 @@ _HOP = 0.02  # risoluzione dell'inviluppo della voce (secondi)
 #  6: la nota tenuta finisce al primo stacco dopo le sillabe della parola;
 #  7: parole che partono sulla coda della parola prima, o in pieno silenzio;
 #  8: via le introduzioni parlate o di sottofondo, drop_intro;
-#  9: la prima parola di una riga parte quando il cantante attacca davvero, anche se prima)
-SNAP_VERSION = 9
+#  9: la prima parola di una riga parte quando il cantante attacca davvero, anche se prima;
+# 10: la nota tenuta non si allunga sulla coda della voce, e il colore la segue a parte: `hold`)
+SNAP_VERSION = 10
 _PHRASE_RANGE = 15.0  # dB sotto il volume tipico della frase entro cui la voce conta come «cantato»
 _SNAP_GAP = 0.3  # s di silenzio vero dentro una parola: la voce prima era la coda della parola precedente
 _EARLY_MAX = 3.0  # s: di quanto al massimo la prima parola di una riga può anticipare per seguire la voce
@@ -1005,6 +1007,9 @@ def early_line_starts(lines: list[Line], voice, sung: list[Word]) -> int:
 
 _SUSTAIN_MAX = 8.0  # s: durata massima di una parola tenuta (dall'inizio della parola)
 _SUSTAIN_DIP = 0.3  # s: cali più brevi di così (vibrato, consonanti) non interrompono la nota tenuta
+_HOLD_DROP = 8.0  # dB sotto il volume della parola: più giù non è più la nota, è la sua coda (riverbero)
+_HOLD_BACK = 6.0  # dB sotto il volume della parola: se la voce ci torna, sta ancora cantando
+_HOLD_MIN = 0.3  # s di nota tenuta dopo la parola pronunciata perché il colore la segua a parte
 
 
 def _sustain(db, thr: float, start: int, limit: int) -> int:
@@ -1026,15 +1031,23 @@ def extend_to_voice(lines: list[Line], voice, sung: list[Word] | None = None) ->
 
     Whisper chiude la parola poco dopo l'attacco anche quando il cantante la tiene a lungo
     («primaveraaa…», «E… EEEEEE… fateme»): la riga sembrava finita, o restava ferma a metà, mentre
-    si cantava ancora. La fine si sposta in avanti finché la voce resta al livello della frase,
-    senza arrivare alla parola (o alla riga) successiva.
+    si cantava ancora. La fine si sposta in avanti finché la voce tiene la nota, senza arrivare
+    alla parola (o alla riga) successiva.
 
-    La nota tenuta però finisce al primo stacco di sillaba dopo la fine della parola sentita da
-    Whisper (`sung`, che chiude le note lunghe un po' presto ma sa quando la parola è finita): dopo
-    «un mattoooo» la voce restava sulla stessa nota con un «na-na-na» (o un coro), e la parola si
-    colorava piano per altri 6 secondi. Gli stacchi prima di quel punto sono vibrato o consonanti
-    della parola stessa; le pause vere fermano già la voce che cala. Le note finali allungate così
-    in passato si riaccorciano. Restituisce le parole cambiate.
+    La nota tenuta finisce:
+    - quando la voce cala di _HOLD_DROP dB sotto il volume della parola: quello che resta è la
+      coda (riverbero, eco), non il cantante. In «…neanche troppo lontani» la parola durava 1,3 s
+      più della voce e si colorava piano;
+    - al primo stacco di sillaba dopo la fine della parola sentita da Whisper (`sung`, che chiude
+      le note lunghe un po' presto ma sa quando la parola è finita): dopo «un mattoooo» la voce
+      restava sulla stessa nota con un «na-na-na» (o un coro), e la parola si colorava piano per
+      altri 6 secondi. Gli stacchi prima di quel punto sono vibrato o consonanti della parola.
+
+    Si riparte ogni volta dalla fine della parola sentita da Whisper: ripetere il controllo non
+    allunga ancora, e le note allungate troppo in passato (testi già salvati) si riaccorciano.
+    In `hold` resta l'istante in cui la parola è stata pronunciata e comincia la nota tenuta: il
+    colore arriva quasi in fondo entro lì e avanza piano solo sulla nota (vedi wordFill).
+    Restituisce le parole cambiate.
     """
     import bisect
 
@@ -1060,23 +1073,37 @@ def extend_to_voice(lines: list[Line], voice, sung: list[Word] | None = None) ->
             last = j + 1 == len(l.words)
             nxt = nxt_line - 0.15 if last else l.words[j + 1].start
             # fine della nota: il primo stacco dopo la fine della parola sentita da Whisper
-            h = heard(w.text, w.start - 1.0, w.start + 1.0) if cuts else None
+            h = heard(w.text, w.start - 1.0, w.start + 1.0) if sung else None
             cut = n * _HOP
-            if h is not None:
+            if h is not None and cuts:
                 k = bisect.bisect_right(cuts, int((max(h[1], w.start) + 0.1) / _HOP))
                 cut = cuts[k] * _HOP if k < len(cuts) else cut
-            if last and w.end - cut > 0.5 and cut > w.start + 0.3:
-                w.end = cut  # allungata in passato oltre la nota (testi già salvati)
-                fixed += 1
+            # fine della parola pronunciata: quella sentita da Whisper se la parola arriva più in là
+            # (allungata in passato), altrimenti la fine attuale
+            spoken = h[1] if h is not None and w.start + 0.1 < h[1] <= w.end else w.end
+            a, we = int(w.start / _HOP), int(spoken / _HOP)
+            if we >= n:
                 continue
-            we = int(w.end / _HOP)
-            if we >= n or min(nxt, cut) - w.end < 0.2:
-                continue  # la parola dopo (o la sillaba dopo) attacca subito: niente da allungare
             # limite contato dall'inizio della parola: ripetere il controllo non la allunga ancora
             limit = min(nxt, cut, w.start + _SUSTAIN_MAX)
-            end = _sustain(db, thr, we, min(n, int(limit / _HOP)))
-            if (end - we) * _HOP >= 0.2:
-                w.end = min(end * _HOP, limit)
+            # senza nota tenuta la parola finisce dove è stata pronunciata (scarti minimi: resta com'è)
+            end = spoken if w.end - spoken >= 0.2 else w.end
+            note = float(np.percentile(db[a : max(we, a + 3)], 75))  # volume della parola
+            if limit - spoken >= 0.2:
+                k = _sustain(db, max(thr, note - _HOLD_DROP), we, min(n, int(limit / _HOP)))
+                if (k - we) * _HOP >= 0.2:
+                    end = min(k * _HOP, limit)
+            if end < w.end - 0.05:
+                # si accorcia solo una coda: se più avanti la voce torna al volume della parola
+                # («E… EEEEEE», la nota ripresa dopo un respiro) la fine di prima era giusta, ma
+                # mai oltre lo stacco della sillaba dopo (lì canta già altro)
+                keep = min(w.end, max(limit, end))
+                rest = db[int(end / _HOP) + 1 : int(keep / _HOP)]
+                if rest.size and float(np.percentile(rest, 90)) > note - _HOLD_BACK:
+                    end = keep
+            w.hold = spoken if end - spoken >= _HOLD_MIN else -1.0
+            if abs(end - w.end) >= 0.05:
+                w.end = end
                 fixed += 1
     return fixed
 
@@ -1275,6 +1302,8 @@ def fix_held_notes(
         if not (confirmed and ok):
             continue
         for j, (w, (a, b)) in enumerate(zip(words, bounds)):
+            if abs(starts[a] - w.start) > 0.05:
+                w.hold = -1.0  # parola spostata: la vecchia nota tenuta non vale più
             w.start = starts[a]
             if j + 1 < len(words):
                 w.end = starts[b]  # fino alla parola dopo (pause comprese: la nota è ancora sua)
@@ -1392,6 +1421,9 @@ def to_json(lines: list[Line], source: str, language: str) -> dict:
             "text": l.text,
             "words": [{"t": w.text, "s": round(w.start, 3), "e": round(w.end, 3)} for w in l.words],
         }
+        for w, d in zip(l.words, item["words"]):
+            if w.start + 0.05 < w.hold <= w.end - _HOLD_MIN:
+                d["h"] = round(w.hold, 3)  # da qui la parola è pronunciata: resta la nota tenuta
         orig = l.orig or "".join(w.orig or w.text for w in l.words) if any(w.orig for w in l.words) else l.orig
         if orig:
             item["orig"] = orig  # riga originale (giapponese) sotto il romaji

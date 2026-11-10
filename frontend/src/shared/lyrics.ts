@@ -33,7 +33,17 @@ export function activeIndex(times: number[], t: number): number {
   return ans;
 }
 
-/** Riempimento (0..1) di una parola al tempo t. */
-export function wordFill(w: { s: number; e: number }, t: number): number {
-  return Math.max(0, Math.min(1, (t - w.s) / Math.max(w.e - w.s, 0.05)));
+const SPOKEN = 0.7; // quota della parola già colorata quando è stata pronunciata e resta solo la nota tenuta
+
+/**
+ * Riempimento (0..1) di una parola al tempo t. Con una nota tenuta (`h`) il colore segue la voce:
+ * arriva quasi in fondo mentre la parola viene pronunciata e avanza piano solo sulla nota, invece
+ * di spalmarsi uguale su tutta la durata (la parola sembrava colorarsi in ritardo).
+ */
+export function wordFill(w: { s: number; e: number; h?: number }, t: number): number {
+  const len = Math.max(w.e - w.s, 0.05);
+  if (w.h === undefined || w.h <= w.s || w.h >= w.e) return Math.max(0, Math.min(1, (t - w.s) / len));
+  const at = Math.max(SPOKEN, (w.h - w.s) / len); // mai più lento di prima
+  if (t <= w.h) return Math.max(0, (at * (t - w.s)) / (w.h - w.s));
+  return Math.min(1, at + ((1 - at) * (t - w.h)) / (w.e - w.h));
 }

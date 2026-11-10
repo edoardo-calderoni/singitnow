@@ -359,3 +359,54 @@ def test_parole_di_una_riga_non_si_agganciano_a_parole_uguali_lontane():
     align([line], intro + song, 60.0)
     assert all(w.start > 45 for w in line.words)
     assert [w.start for w in line.words[3:]] == [51.1, 51.2, 51.9, 52.2, 52.4]
+
+
+def _tail_voice():
+    """«lontaniii»: parola da 1.0, nota tenuta fino a 2.2, poi solo la coda (riverbero) fino a 4."""
+    import numpy as np
+
+    db = np.full(int(10 / _HOP), -60.0)
+    db[int(1.0 / _HOP) : int(2.2 / _HOP)] = -12.0
+    db[int(2.2 / _HOP) : int(4.0 / _HOP)] = -24.0  # 12 dB sotto: non è più il cantante
+    return (db, -40.0)
+
+
+def test_nota_tenuta_non_si_allunga_sulla_coda_della_voce():
+    """Destinazione Paradiso: «lontani» durava 1,3 s più della voce e si colorava piano."""
+    from singitnow.lyrics import extend_to_voice, to_json
+
+    line = Line([Word("troppo", 0.5, 1.0), Word("lontani", 1.0, 1.8)])
+    heard = [Word("troppo", 0.5, 1.0), Word("lontani", 1.0, 1.8)]
+    extend_to_voice([line], _tail_voice(), heard)
+    w = line.words[-1]
+    assert w.end == pytest.approx(2.2, abs=0.05)
+    assert w.hold == pytest.approx(1.8)  # pronunciata a 1.8, poi solo la nota
+    assert to_json([line], "x", "it")["lines"][0]["words"][1]["h"] == pytest.approx(1.8)
+    assert "h" not in to_json([line], "x", "it")["lines"][0]["words"][0]
+
+
+def test_coda_allungata_in_passato_si_accorcia_e_resta_stabile():
+    from singitnow.lyrics import extend_to_voice
+
+    line = Line([Word("troppo", 0.5, 1.0), Word("lontani", 1.0, 3.9)])  # salvata con la coda
+    heard = [Word("troppo", 0.5, 1.0), Word("lontani", 1.0, 1.8)]
+    extend_to_voice([line], _tail_voice(), heard)
+    assert line.words[-1].end == pytest.approx(2.2, abs=0.05)
+    first = (line.words[-1].end, line.words[-1].hold)
+    extend_to_voice([line], _tail_voice(), heard)
+    assert (line.words[-1].end, line.words[-1].hold) == first
+
+
+def test_nota_ripresa_dopo_una_pausa_non_si_accorcia():
+    """«E… EEEEEE»: dopo la pausa la voce torna a pieno volume, la parola dura fino a lì."""
+    import numpy as np
+
+    from singitnow.lyrics import extend_to_voice
+
+    db = np.full(int(12 / _HOP), -60.0)
+    db[int(1.0 / _HOP) : int(1.3 / _HOP)] = -12.0
+    db[int(2.0 / _HOP) : int(5.0 / _HOP)] = -12.0
+    line = Line([Word("E", 1.0, 5.0), Word("fateme", 5.0, 5.5)])
+    extend_to_voice([line], (db, -40.0), [Word("E", 1.0, 1.3), Word("fateme", 5.0, 5.5)])
+    assert line.words[0].end == 5.0
+    assert line.words[0].hold == pytest.approx(1.3)

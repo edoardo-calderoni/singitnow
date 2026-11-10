@@ -98,6 +98,8 @@ export interface LyricWord {
   t: string;
   s: number;
   e: number;
+  /** istante in cui la parola è pronunciata e comincia la nota tenuta (se c'è) */
+  h?: number;
 }
 export interface LyricLine {
   start: number;

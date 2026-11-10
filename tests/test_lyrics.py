@@ -348,3 +348,14 @@ def test_riga_confermata_da_whisper_non_si_anticipa():
     line, voice = _late_line()
     assert early_line_starts([line], voice, [Word("So", 12.6, 13.0)]) == 0
     assert line.words[0].start == 12.5
+
+
+def test_parole_di_una_riga_non_si_agganciano_a_parole_uguali_lontane():
+    """Wannabe a mano: «Yooo tell me what you want,» finiva sulle voci dell'intro (20 s) mentre
+    il resto della riga era giusto a 51 s."""
+    intro = sung(("if", 21.2), ("you", 21.8), ("want", 21.9), ("to", 22.1), ("be", 22.2))
+    song = sung(("yo", 50.0), ("what", 51.1), ("you", 51.2), ("really", 51.9), ("really", 52.2), ("want", 52.4))
+    line = Line([Word(t) for t in ("Yooo", "you", "want,", "what", "you", "really,", "really", "want")])
+    align([line], intro + song, 60.0)
+    assert all(w.start > 45 for w in line.words)
+    assert [w.start for w in line.words[3:]] == [51.1, 51.2, 51.9, 52.2, 52.4]

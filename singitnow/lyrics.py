@@ -320,9 +320,52 @@ def align(lines: list[Line], sung: list[Word], duration: float) -> float:
             src.onset = j == 0 or dst.start - sung[j - 1].end > 0.15
             src.run = blk.size
             matched += 1
+    matched -= _drop_stray(lines)
     ratio = matched / max(len(flat), 1)
     _interpolate(flat, duration)
     return ratio
+
+
+_STRAY_RUN = 3  # abbinamenti più corti di così (parole) possono essere parole uguali sentite altrove
+_STRAY_GAP = 3.0  # s in più di quanto servirebbe a cantare le parole in mezzo
+
+
+def _drop_stray(lines: list[Line]) -> int:
+    """Toglie gli abbinamenti di poche parole finiti lontano dal resto della loro riga.
+
+    Abbinando nell'ordine su tutto il brano, le parole di una riga rimaste fuori dal blocco
+    sicuro si agganciano a parole uguali sentite altrove: in Wannabe «Yooo tell me what you want,»
+    finiva a 20 s, sulle voci dell'intro («…if you want to be my lover»), mentre «what you really
+    really want» era giusto a 51 s. Dentro una riga, una parola abbinata in un tratto corto che sta
+    molto più lontano (nel tempo) di quanto servirebbe a cantare le parole in mezzo, da una parola
+    abbinata in un tratto più lungo, non è la sua: torna da collocare (poi la si interpola accanto
+    alle altre e la si allinea alla voce). Fra una riga e l'altra le pause lunghe sono normali e non
+    contano. Restituisce le parole tolte.
+    """
+    dropped = 0
+    for l in lines:
+        ws = l.words
+        changed = True
+        while changed:
+            changed = False
+            m = [k for k, w in enumerate(ws) if w.start >= 0]
+            for p, k in enumerate(m):
+                w = ws[k]
+                if w.run >= _STRAY_RUN:
+                    continue
+                for q in (m[p - 1] if p else None, m[p + 1] if p + 1 < len(m) else None):
+                    if q is None or ws[q].run <= w.run:
+                        continue
+                    gap = ws[q].start - w.end if q > k else w.start - ws[q].end
+                    if gap > _STRAY_GAP + 1.0 * (abs(q - k) - 1):
+                        w.start = w.end = -1.0
+                        w.run, w.onset = 0, False
+                        dropped += 1
+                        changed = True
+                        break
+                if changed:
+                    break
+    return dropped
 
 
 _CUT_JUMP = 3.0  # s: scarto che torna indietro di più di così fra due tratti = strofa tagliata nel video

@@ -509,6 +509,15 @@ class Playlist:
                 or any(r["song_id"] == song_id for r in self._requests)
             )
 
+    def song_rejected(self, song: Song | None, reason: str) -> None:
+        """Brano importato ma inutilizzabile: chi aspettava di cantarlo (e il PC) viene avvisato."""
+        if song is None:
+            return
+        with self._lock:
+            singers = list(dict.fromkeys(self._waiting.get(song.id, [])))
+        self.forget_song(song.id)
+        hub.publish("import_rejected", {"song": song.to_public(), "reason": reason, "singers": singers})
+
     def forget_song(self, song_id: str) -> None:
         with self._lock:
             self._entries = [e for e in self._entries if e.song_id != song_id]

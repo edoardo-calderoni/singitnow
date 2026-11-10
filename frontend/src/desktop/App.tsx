@@ -23,6 +23,8 @@ import { QuizOverlay } from "./Quiz";
 import { useQuiz } from "../shared/quiz";
 import { useSettings } from "../shared/settings";
 import { LibraryView, SearchView } from "./Views";
+import { RejectedDialog } from "./Rejected";
+import type { ImportRejected } from "../shared/api";
 
 type Tab = "library" | "search";
 
@@ -34,6 +36,7 @@ export function App() {
     if (event === "player_command") window.dispatchEvent(new CustomEvent("player-command", { detail: data }));
     // brani aggiunti dal PC stesso: l'avviso va solo sui telefoni
     else if (event === "request") !data?.from_pc && requests.push(data as RequestEvent);
+    else if (event === "import_rejected") setRejected(data as ImportRejected);
     else if (event === "applause") applause.push(data.name);
     else if (event === "reaction") reactions.push(data.name, data.emoji);
     else if (event === "show_qr") showQr(data?.seconds ?? 10);
@@ -51,6 +54,8 @@ export function App() {
   const [tab, setTab] = useState<Tab>("library");
   const [info, setInfo] = useState<{ remote_url: string; qr_svg: string } | null>(null);
   const [toast, setToast] = useState("");
+  const [rejected, setRejected] = useState<ImportRejected | null>(null);
+  const [searchFor, setSearchFor] = useState({ q: "", k: 0 });
   const [queueFor, setQueueFor] = useState<Song | null>(null);
   const [editing, setEditing] = useState<Song | null>(null);
   const [lyricsFor, setLyricsFor] = useState<Song | null>(null);
@@ -261,7 +266,13 @@ export function App() {
             goSearch={() => setTab("search")}
           />
         ) : (
-          <SearchView songs={songs} onToast={setToast} onBack={() => setTab("library")} />
+          <SearchView
+            key={searchFor.k}
+            songs={songs}
+            onToast={setToast}
+            onBack={() => setTab("library")}
+            initialQuery={searchFor.q}
+          />
         )}
       </main>
 
@@ -412,6 +423,18 @@ export function App() {
         />
       )}
       {lyricsFor && <LyricsDialog song={lyricsFor} onClose={() => setLyricsFor(null)} onToast={setToast} />}
+      {rejected && !nowSong && (
+        // l'app sul PC è anche lo schermo della TV: l'avviso aspetta che non suoni niente
+        <RejectedDialog
+          data={rejected}
+          onClose={() => setRejected(null)}
+          onSearch={(q) => {
+            setRejected(null);
+            setSearchFor((p) => ({ q, k: p.k + 1 }));
+            setTab("search");
+          }}
+        />
+      )}
       {/* nel pannello principale in basso a destra; con un brano in corso (anche nella finestrella,
           che occupa l'angolo in basso) in alto a destra */}
       <RequestToasts items={requests.items} bottom={!nowSong} />

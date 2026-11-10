@@ -19,7 +19,7 @@ from pydantic import BaseModel
 
 from . import (
     __version__, admin, audio, avatars, backup, competition, config, halloffame, mics, mode, names, party, people,
-    health, keyfit, profiles, quiz,
+    keyfit, profiles, quiz,
     recordings, stats, storage, wifi, youtube,
 )
 from .events import hub
@@ -41,11 +41,13 @@ async def lifespan(app: FastAPI):
     playlist.load()
     party.restore()  # app chiusa a metà serata: partecipanti, voti e competizione come prima
     pipeline.on_ready(playlist.song_ready)
+    pipeline.on_rejected(playlist.song_rejected)
     pipeline.start()
     pipeline.backfill_covers()
     pipeline.backfill_pitch()
     pipeline.backfill_voice_snap()
     pipeline.backfill_beats()
+    pipeline.backfill_repair()  # testi fuori tempo già in libreria: riascolto della voce, una volta
     if mode.quiz():
         quiz.fill_years()
     threading.Thread(target=recordings.cleanup, name="pulizia-registrazioni", daemon=True).start()
@@ -976,33 +978,6 @@ def reaction(req: ReactionReq):
 
 
 # ------------------------------------------------------------------ brani con problemi (solo dal PC)
-@app.get("/api/admin/health", dependencies=[Depends(admin.require_local)])
-async def health_report():
-    return await run_in_threadpool(health.report, pipeline.repairing())
-
-
-class HealthIgnoreReq(BaseModel):
-    song_id: str
-    code: str
-
-
-@app.post("/api/admin/health/ignore", dependencies=[Depends(admin.require_local)])
-async def health_ignore(req: HealthIgnoreReq):
-    health.ignore(req.song_id, req.code)
-    return await run_in_threadpool(health.report, pipeline.repairing())
-
-
-class HealthRepairReq(BaseModel):
-    song_ids: list[str]
-
-
-@app.post("/api/admin/health/repair", dependencies=[Depends(admin.require_local)])
-async def health_repair(req: HealthRepairReq):
-    """Riascolta la voce e risincronizza il testo dei brani indicati (uno alla volta, in sottofondo)."""
-    pipeline.repair_lyrics(req.song_ids)
-    return await run_in_threadpool(health.report, pipeline.repairing())
-
-
 # ------------------------------------------------------------------ punteggi della serata
 class ScoreReq(BaseModel):
     song_id: str

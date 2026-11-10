@@ -5,7 +5,6 @@ import { api } from "../shared/api";
 import { PasswordInput } from "../shared/PasswordInput";
 import { StorageSetting } from "./Storage";
 import { BackupSetting } from "./Backup";
-import { HealthSetting } from "./Health";
 
 /** Ingranaggio a destra del logo: apre il pannello «Settaggi». */
 export function SettingsButton({ onError }: { onError: (m: string) => void }) {
@@ -86,7 +85,6 @@ function SettingsDialog({ onClose, onError }: { onClose: () => void; onError: (m
           value={values?.quiz ?? null}
           onChange={(v) => toggle("quiz", v)}
         />
-        <HealthSetting onError={onError} />
         <StorageSetting onError={onError} />
         <BackupSetting onError={onError} />
         <AdminPasswordSetting onToast={onError} />

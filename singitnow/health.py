@@ -1,4 +1,4 @@
-"""Brani con problemi: controllo della libreria per i Settaggi dell'app sul PC.
+"""Controllo di un brano appena importato: se è inutilizzabile non entra in libreria.
 
 Per ogni brano si guarda:
 - importazione non riuscita o file mancanti (video, base, voce);
@@ -10,28 +10,25 @@ Per ogni brano si guarda:
 - note dell'intonazione mancanti (in Competizione il brano non ha voto);
 - ritmo mancante (niente mix in battuta in DJ e Jukebox).
 
-Un problema si può «ignorare» (data/health_ignore.json): non compare più finché il brano non cambia.
+Alla fine dell'importazione (pipeline) un brano con uno di questi problemi (tranne il ritmo) si
+cancella e si chiede di scegliere un altro video per la stessa canzone: vedi rejection().
 """
 
 from __future__ import annotations
 
 import bisect
 import json
-import threading
 
-from . import config
-from .library import ERROR, READY, library
+from .library import ERROR
 from .lyrics import _norm, _similar, full_transcription
 
 ERR, WARN, INFO = "error", "warn", "info"
-_LEVEL = {ERR: 0, WARN: 1, INFO: 2}
 OFF = 0.15  # parole sentite al loro posto: sotto, testo tutto fuori tempo
 PARTIAL = 0.45  # sotto, fuori tempo in alcuni punti
 UNHEARD = 0.5  # parole riconosciute nella voce rispetto a quelle del testo: sotto, la verifica non vale
 NEAR = 1.5  # s: distanza massima fra la parola del testo e quella sentita
 MIN_NOTES = 20
 
-_lock = threading.Lock()
 _cache: dict[str, tuple[tuple, list[dict]]] = {}
 
 
@@ -84,7 +81,7 @@ def check(song) -> list[dict]:
 
     if song.status == ERROR:
         add("import", ERR, f"Importazione non riuscita{': ' + song.error if song.error else ''}")
-    elif song.status == READY:
+    else:  # anche durante l'importazione: il controllo si fa prima di dichiararlo pronto
         missing = [n for n, f in (("video", "video.mp4"), ("base", "instrumental.m4a"), ("voce", "vocals.m4a")) if not (d / f).exists()]
         if missing:
             add("files", ERR, f"Mancano dei file ({', '.join(missing)}): va reimportato")
@@ -115,61 +112,28 @@ def check(song) -> list[dict]:
     return out
 
 
-# ------------------------------------------------------------------ problemi ignorati
-def _ignore_path():
-    return config.DATA_DIR / "health_ignore.json"
-
-
-def _ignored() -> dict[str, dict[str, list]]:
-    data = _read(_ignore_path())
-    return data if isinstance(data, dict) else {}
-
-
-def ignore(song_id: str, code: str) -> None:
-    """Non segnalare più questo problema di questo brano (finché il brano non cambia)."""
-    song = library.get(song_id)
-    if not song:
-        return
-    with _lock:
-        data = _ignored()
-        data.setdefault(song_id, {})[code] = list(_cache.get(song_id, ((),))[0])
-        _ignore_path().write_text(json.dumps(data), encoding="utf-8")
-
-
+# ------------------------------------------------------------------ brani rifiutati all'importazione
+# problemi per cui il brano non si può usare: va scelto un altro video (il ritmo mancante no, è un dettaglio)
+_REJECT = {
+    "files": "l'importazione non ha prodotto tutti i file",
+    "lyrics_missing": "non ho trovato il testo della canzone",
+    "lyrics_auto": "non ho trovato il testo della canzone online",
+    "lyrics_off": "il testo non va a tempo con questo video",
+    "lyrics_partial": "il testo non va a tempo con questo video",
+    "lyrics_unverified": "non riesco a capire le parole cantate in questo video",
+    "pitch": "non riesco a ricavare la melodia della voce",
+}
 REPAIRABLE = ("lyrics_off", "lyrics_partial", "lyrics_unverified")
 
 
-def report(repairing: list[str] | None = None) -> dict:
-    """Brani con problemi. `repairing`: brani in riparazione (si mostrano anche se ora non hanno problemi)."""
-    ignored = _ignored()
-    repairing = repairing or []
-    songs = []
-    for s in library.all():
-        if s.id in repairing:
-            p = s.to_public()
-            songs.append({
-                "id": s.id, "title": s.title, "artist": s.artist, "status": s.status,
-                "thumbnail_url": p.get("thumbnail_url"), "issues": [], "repairing": True,
-                "queued": repairing.index(s.id), "repaired": False,
-            })
-            continue
-        issues = check(s)
-        key = list(_cache.get(s.id, ((),))[0])
-        skip = ignored.get(s.id, {})
-        issues = [i for i in issues if skip.get(i["code"]) != key]
-        if not issues:
-            continue
-        p = s.to_public()
-        songs.append({
-            "id": s.id, "title": s.title, "artist": s.artist, "status": s.status,
-            "thumbnail_url": p.get("thumbnail_url"), "issues": issues, "repairing": False,
-            # riparabile in automatico finché la voce non è stata riascoltata tutta
-            "repaired": full_transcription(s.dir),
-        })
+def rejection(song) -> str | None:
+    """Perché il brano appena importato non si può usare (None se va bene)."""
+    for issue in check(song):
+        if issue["code"] in _REJECT:
+            return _REJECT[issue["code"]]
+    return None
 
-    def level(x):
-        return min((_LEVEL[i["level"]] for i in x["issues"]), default=-1)
 
-    songs.sort(key=lambda x: (level(x), x["title"].casefold()))
-    count = {lvl: sum(1 for x in songs if level(x) == _LEVEL[lvl]) for lvl in _LEVEL}
-    return {"songs": songs, "total": len(library.all()), "count": count, "repairing": len(repairing)}
+def needs_repair(song) -> bool:
+    """Brano già in libreria con il testo fuori tempo, mai riascoltato con il riconoscimento migliorato."""
+    return any(i["code"] in REPAIRABLE for i in check(song)) and not full_transcription(song.dir)

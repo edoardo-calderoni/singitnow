@@ -149,22 +149,11 @@ export interface Competition {
 }
 
 /** Spazio su disco: occupazione dei brani (byte) e totali. */
-/** Brani con problemi (Settaggi dell'app sul PC). */
-export interface HealthReport {
-  songs: {
-    id: string;
-    title: string;
-    artist: string;
-    status: string;
-    thumbnail_url?: string;
-    issues: { code: string; level: "error" | "warn" | "info"; text: string }[];
-    repairing: boolean; // in riparazione o in coda
-    queued?: number; // 0 = in corso
-    repaired: boolean; // voce già riascoltata tutta: resta da sistemare a mano
-  }[];
-  total: number;
-  count: { error: number; warn: number; info: number };
-  repairing: number;
+/** Evento «import_rejected»: brano importato ma inutilizzabile, già cancellato dalla libreria. */
+export interface ImportRejected {
+  song: Song;
+  reason: string;
+  singers: string[]; // chi aspettava di cantarlo
 }
 
 export interface StorageReport {
@@ -321,9 +310,6 @@ export const api = {
   clearKeys: (song_id?: string) => req("POST", "/api/admin/storage/keys", { song_id: song_id ?? null }),
   clearWork: () => req("POST", "/api/admin/storage/work"),
   retry: (id: string) => req("POST", `/api/songs/${id}/retry`),
-  health: () => req<HealthReport>("GET", "/api/admin/health"),
-  healthIgnore: (song_id: string, code: string) => req<HealthReport>("POST", "/api/admin/health/ignore", { song_id, code }),
-  healthRepair: (song_ids: string[]) => req<HealthReport>("POST", "/api/admin/health/repair", { song_ids }),
   patchSong: (id: string, data: Partial<Pick<Song, "artist" | "title" | "language">>) =>
     req<Song>("PATCH", `/api/songs/${id}`, data),
   setLyrics: (id: string, text: string) => req("PUT", `/api/songs/${id}/lyrics`, { text }),

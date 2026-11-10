@@ -73,6 +73,7 @@ class Pipeline:
         self._repairing: list[str] = []
         self._repair_thread: threading.Thread | None = None
         self._ready_callbacks: list = []
+        self._rejected_callbacks: list = []
         self._timing = Timing()
         # fase in corso del brano in elaborazione: nome, inizio, avanzamento noto (0..1 o None)
         self._phase: dict = {}
@@ -103,6 +104,22 @@ class Pipeline:
 
     def on_ready(self, cb) -> None:
         self._ready_callbacks.append(cb)
+
+    def on_rejected(self, cb) -> None:
+        """cb(song, motivo): brano importato ma inutilizzabile, cancellato dalla libreria."""
+        self._rejected_callbacks.append(cb)
+
+    def backfill_repair(self) -> None:
+        """Brani già in libreria con il testo fuori tempo: si riascolta la voce e si risincronizza (una volta)."""
+        from . import health
+
+        def run():
+            todo = [s.id for s in library.all() if s.status == READY and health.needs_repair(s)]
+            if todo:
+                log.info("Testi fuori tempo da riparare: %d", len(todo))
+                self.repair_lyrics(todo)
+
+        threading.Thread(target=run, daemon=True).start()
 
     def start(self) -> None:
         if self._thread is None:
@@ -294,6 +311,17 @@ class Pipeline:
             self._build_beats(sid)  # ritmo per il mix in battuta (pochi secondi)
             self._check_cancel(sid)
 
+            # inutilizzabile (testo fuori tempo o non trovato, melodia mancante): via, si sceglie un altro video
+            # (non per i brani ripresi da un backup: il loro testo era già stato controllato o corretto a mano)
+            if "lyrics" in todo:
+                from . import health
+
+                reason = health.rejection(library.get(sid))
+                if reason:
+                    stop.set()
+                    self._reject(sid, reason)
+                    return
+
             stop.set()
             library.update(sid, status=READY, progress=1.0, step="Pronto", error="", eta=0.0)
             for cb in self._ready_callbacks:
@@ -319,6 +347,16 @@ class Pipeline:
                 self._cancelled.discard(sid)
                 library.discard(sid)
                 shutil.rmtree(config.LIBRARY_DIR / sid, ignore_errors=True)
+
+    def _reject(self, sid: str, reason: str) -> None:
+        song = library.get(sid)
+        log.info("Importazione di %s rifiutata: %s", sid, reason)
+        for cb in self._rejected_callbacks:
+            try:
+                cb(song, reason)
+            except Exception:
+                log.exception("callback on_rejected")
+        library.discard(sid)
 
     def refresh_queue(self, current_left: float | None = None) -> None:
         """Posizione e tempo stimato di ogni brano in attesa di essere preparato.

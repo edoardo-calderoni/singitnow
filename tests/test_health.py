@@ -1,4 +1,4 @@
-"""Brani con problemi (Settaggi dell'app sul PC) e reazioni dai telefoni."""
+"""Controllo dei brani importati (inutilizzabili = rifiutati) e reazioni dai telefoni."""
 
 from __future__ import annotations
 
@@ -39,7 +39,7 @@ def test_brano_a_posto(add_song):
     _lyrics(s, WORDS)
     _whisper(s, WORDS)
     assert codes(s) == []
-    assert health.report()["songs"] == []
+    assert health.rejection(s) is None
 
 
 def test_testo_fuori_tempo(add_song):
@@ -66,29 +66,11 @@ def test_mancanze_ed_errori(add_song):
     assert codes(e) == ["import"]
 
 
-def test_problema_ignorato_finche_il_brano_non_cambia(add_song):
-    s = add_song("a")
-    _complete(s)
-    _lyrics(s, WORDS, source="whisper")
-    _whisper(s, WORDS)
-    assert codes(s) == ["lyrics_auto"]
-    health.report()
-    health.ignore("a", "lyrics_auto")
-    assert health.report()["songs"] == []
-    _lyrics(s, WORDS[:-1], source="whisper")  # il testo cambia: il problema torna
-    import os
-    os.utime(s.dir / "lyrics.json", (1, 1))
-    assert [x["id"] for x in health.report()["songs"]] == ["a"]
-
-
-def test_solo_dal_pc_e_reazioni(add_song):
+def test_reazioni(add_song):
     from singitnow import app as appmod
     from singitnow.playlist import Entry
 
     c = TestClient(appmod.app, client=("192.168.1.20", 5000))  # un telefono
-    assert c.get("/api/admin/health").status_code == 403
-    local = TestClient(appmod.app, client=("127.0.0.1", 5000))
-    assert local.get("/api/admin/health").status_code == 200
 
     add_song("a")
     assert c.post("/api/reaction", json={"name": "Anna", "emoji": "🔥"}).json() == {"ok": False}  # niente in corso
@@ -111,32 +93,40 @@ def test_lingua_dal_testo():
     assert guess_language(parse_plain("la la la")) is None
 
 
-def test_ripara_testi(add_song, monkeypatch):
-    from singitnow import app as appmod
+def _importa(add_song, monkeypatch, good: bool):
+    """Importazione con download e separazione già fatti: il testo è buono o fuori tempo."""
+    from singitnow import playlist as plmod
+    from singitnow.library import LYRICS, library
     from singitnow.pipeline import pipeline
 
-    s = add_song("a")
+    s = add_song("a", status=LYRICS)
     _complete(s)
-    _lyrics(s, WORDS)
-    _whisper(s, [(w, t + 30) for w, t in WORDS])
-    done = []
+    _whisper(s, WORDS)
+    sent = []
+    monkeypatch.setattr(plmod.hub, "publish", lambda ev, data: sent.append((ev, data)))
+    monkeypatch.setattr(pipeline, "_build_lyrics", lambda sid, v, text=None, fallback=None: _lyrics(s, WORDS if good else [(w, t + 30) for w, t in WORDS]))
+    monkeypatch.setattr(pipeline, "_build_pitch", lambda sid: None)
+    monkeypatch.setattr(pipeline, "_build_beats", lambda sid: None)
+    monkeypatch.setattr(pipeline, "_fetch_cover", lambda sid, *a: None)
+    monkeypatch.setattr(pipeline, "_ready_callbacks", [])
+    monkeypatch.setattr(pipeline, "_rejected_callbacks", [plmod.playlist.song_rejected])
+    plmod.playlist._waiting["a"] = ["Anna", "Anna"]
+    pipeline._process(library.get("a"))
+    plmod.playlist._waiting.pop("a", None)
+    return library.get("a"), sent
 
-    def fake(sid, text=None, fallback=None):
-        _whisper(s, WORDS)
-        data = json.loads((s.dir / "whisper.json").read_text(encoding="utf-8"))
-        data["key"] = "small:1:full:it"
-        (s.dir / "whisper.json").write_text(json.dumps(data), encoding="utf-8")
-        done.append(sid)
 
-    monkeypatch.setattr(pipeline, "_lyrics_only", fake)
-    local = TestClient(appmod.app, client=("127.0.0.1", 5000))
-    row = local.get("/api/admin/health").json()["songs"][0]
-    assert row["issues"][0]["code"] == "lyrics_off" and not row["repaired"]
-    local.post("/api/admin/health/repair", json={"song_ids": ["a"]})
-    import time
-    for _ in range(100):
-        if not pipeline.repairing():
-            break
-        time.sleep(0.05)
-    assert done == ["a"] and pipeline.repairing() == []
-    assert local.get("/api/admin/health").json()["songs"] == []  # ora le parole si sentono al loro posto
+def test_importazione_rifiutata_se_il_testo_e_fuori_tempo(add_song, monkeypatch):
+    song, sent = _importa(add_song, monkeypatch, good=False)
+    assert song is None  # cancellato dalla libreria (e dal disco)
+    ev = [d for e, d in sent if e == "import_rejected"]
+    assert ev and ev[0]["singers"] == ["Anna"] and "a tempo" in ev[0]["reason"]
+    assert ev[0]["song"]["id"] == "a"
+
+
+def test_importazione_buona(add_song, monkeypatch):
+    from singitnow.library import READY
+
+    song, sent = _importa(add_song, monkeypatch, good=True)
+    assert song is not None and song.status == READY
+    assert not [e for e, _ in sent if e == "import_rejected"]

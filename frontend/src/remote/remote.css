@@ -2433,3 +2433,35 @@ body {
   background: rgba(29, 29, 48, 0.85);
   backdrop-filter: blur(6px);
 }
+
+/* ---------- brano rifiutato all'importazione */
+.m-rejected p {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.45;
+  text-align: center;
+  color: var(--text-2);
+}
+.m-rejected-song {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+}
+.m-rejected-song img,
+.m-rejected-song > svg {
+  width: 56px;
+  height: 56px;
+  border-radius: 10px;
+  object-fit: cover;
+  flex: none;
+}
+.m-rejected-song div {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.m-rejected-song span {
+  font-size: 13px;
+  color: var(--text-2);
+}

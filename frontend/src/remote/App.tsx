@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import {
   Check,
+  Music,
   Clock,
   Library,
   ListMusic,
@@ -54,6 +55,7 @@ import { ImportSheet } from "./ImportSheet";
 import { Ranking } from "./Ranking";
 import { InstallBanner } from "./InstallBanner";
 import { AddedNotice, useAddedNotice } from "./AddedNotice";
+import type { ImportRejected } from "../shared/api";
 import { ConnectionLost } from "./ConnectionLost";
 import { DjRequests } from "./DjRequests";
 import { Preparing } from "./Preparing";
@@ -118,6 +120,12 @@ export function App() {
     if (event === "scores") setRanking(data.ranking ?? []);
     if (event === "admin_logout") adminCheck().then(setIsAdmin); // password cambiata dal PC
     if (event === "added") added.push(data); // brano entrato in coda (pronto, non più in preparazione)
+    // brano chiesto da me ma inutilizzabile: è stato cancellato, si propone un altro video
+    if (
+      event === "import_rejected" &&
+      (data?.singers ?? []).some((s: string) => s.toLocaleLowerCase() === nameRef.current.trim().toLocaleLowerCase())
+    )
+      setRejected(data as ImportRejected);
     if (event === "duet") duet.push(data); // proposta di duetto accettata, rifiutata o annullata
     if (event === "recording" && data?.name && data.name === nameRef.current)
       setToast(`Registrazione di «${data.title}» salvata: la trovi nel tuo profilo`);
@@ -139,6 +147,8 @@ export function App() {
   const othersOnline = users.some((u) => u.trim().toLocaleLowerCase() !== name.trim().toLocaleLowerCase());
   const [tab, setTab] = useState<Tab>("queue");
   const [toast, setToast] = useState("");
+  const [rejected, setRejected] = useState<ImportRejected | null>(null);
+  const [searchFor, setSearchFor] = useState({ q: "", k: 0 });
   // copia locale della foto profilo (data URL): serve a ricaricarla se il PC non l'ha più
   const [photo, setPhoto] = useState<string | null>(() =>
     localStorage.getItem("sin.photo"),
@@ -327,7 +337,16 @@ export function App() {
           <LibraryTab songs={songs} name={name} safe={safe} goAdd={() => setTab("search")} />
         )}
         {tab === "search" && (
-          <SearchTab songs={songs} name={name} safe={safe} isAdmin={isAdmin} onToast={setToast} onBack={() => setTab("library")} />
+          <SearchTab
+            key={searchFor.k}
+            songs={songs}
+            name={name}
+            safe={safe}
+            isAdmin={isAdmin}
+            onToast={setToast}
+            onBack={() => setTab("library")}
+            initialQuery={searchFor.q}
+          />
         )}
         {/* modalità DJ: tutte le richieste ricevute, da accettare o rifiutare */}
         {tab === "requests" && actsAsDj && (
@@ -437,6 +456,17 @@ export function App() {
         />
       )}
       {toast && <div className="toast">{toast}</div>}
+      {rejected && (
+        <RejectedSheet
+          data={rejected}
+          onClose={() => setRejected(null)}
+          onSearch={(q) => {
+            setRejected(null);
+            setSearchFor((p) => ({ q, k: p.k + 1 }));
+            setTab("search");
+          }}
+        />
+      )}
       <AddedNotice notice={added.notice} />
       <DuetNotice notice={duet.notice} />
       {/* proposta di duetto ricevuta: si accetta o si rifiuta (solo in Karaoke) */}
@@ -994,6 +1024,7 @@ function SearchTab({
   isAdmin,
   onToast,
   onBack,
+  initialQuery = "",
 }: {
   songs: Song[];
   name: string;
@@ -1001,14 +1032,19 @@ function SearchTab({
   isAdmin: boolean;
   onToast: (m: string) => void;
   onBack: () => void;
+  initialQuery?: string; // dopo un'importazione rifiutata: si cercano subito altri video
 }) {
   // amministratori: link di una playlist di YouTube, si sceglie quali brani importare
   const [plUrl, setPlUrl] = useState("");
   const { addedMsg, preparingMsg } = useAddMessages(name);
-  const [q, setQ] = useState("");
+  const [q, setQ] = useState(initialQuery);
   // gli errori passano da safe(), che li mostra come avviso
   const search = useYoutubeSearch((msg) => safe(() => Promise.reject(new Error(msg))));
   const { results, busy } = search;
+  useEffect(() => {
+    if (initialQuery) search.run(initialQuery);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialQuery]);
   const byId = useMemo(() => new Map(songs.map((s) => [s.id, s])), [songs]);
   const run = (text: string) => search.run(text);
   // prima di importare si confermano artista e titolo (servono a trovare il testo giusto)
@@ -1237,5 +1273,44 @@ function AdminPasswordDialog({
       </div>
     </div>,
     document.body,
+  );
+}
+
+/** Il brano che avevo chiesto non si può usare (testo fuori tempo o non trovato): è stato cancellato. */
+function RejectedSheet({
+  data,
+  onClose,
+  onSearch,
+}: {
+  data: ImportRejected;
+  onClose: () => void;
+  onSearch: (q: string) => void;
+}) {
+  const s = data.song;
+  return (
+    <div className="m-sheet" onClick={onClose}>
+      <div className="m-sheet-card m-rejected" onClick={(e) => e.stopPropagation()}>
+        <div className="m-sheet-title">Importazione non riuscita</div>
+        <div className="m-rejected-song">
+          {s.thumbnail_url ? <img src={s.thumbnail_url} alt="" /> : <Music size={26} />}
+          <div>
+            <b>{s.title}</b>
+            {s.artist && <span>{s.artist}</span>}
+          </div>
+        </div>
+        <p>
+          Non è stato possibile importare questo video: {data.reason}. Scegli un altro video per la stessa canzone, meglio se
+          la versione ufficiale.
+        </p>
+        <div className="m-sheet-actions">
+          <button type="button" className="btn btn-ghost" onClick={onClose}>
+            Chiudi
+          </button>
+          <button type="button" className="btn btn-primary" onClick={() => onSearch([s.artist, s.title].filter(Boolean).join(" "))}>
+            Altro video
+          </button>
+        </div>
+      </div>
+    </div>
   );
 }

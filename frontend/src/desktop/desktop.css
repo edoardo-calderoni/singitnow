@@ -3818,94 +3818,34 @@ body {
   }
 }
 
-/* ---------- brani con problemi (Settaggi) */
-.health-list {
-  margin: 0;
-  padding: 0;
-  list-style: none;
+
+/* ---------- brano rifiutato all'importazione */
+.rejected-modal {
+  max-width: 520px;
 }
-.health-list > li {
-  display: grid;
-  grid-template-columns: 52px minmax(0, 1fr) auto;
-  gap: 12px;
-  align-items: start;
-  padding: 10px 2px;
-  border-bottom: 1px solid var(--border);
-}
-.health-list > li > img,
-.health-noimg {
-  width: 52px;
-  height: 52px;
-  border-radius: 8px;
-  object-fit: cover;
-  background: var(--surface-2);
-}
-.health-body {
-  display: flex;
-  flex-direction: column;
-  min-width: 0;
-  font-size: 14px;
-}
-.health-body ul {
-  margin: 6px 0 0;
-  padding: 0;
-  list-style: none;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-}
-.health-issue {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 13px;
-  color: var(--text-2);
-}
-.health-issue em {
-  font-style: normal;
-  font-weight: 700;
-}
-.health-issue.error svg,
-.health-issue.error em {
-  color: var(--red);
-}
-.health-issue.warn svg,
-.health-issue.warn em {
-  color: var(--amber);
-}
-.health-issue.info svg,
-.health-issue.info em {
-  color: var(--cyan);
-}
-.health-issue .icon-btn {
-  margin-left: auto;
-  padding: 2px;
-  opacity: 0.6;
-}
-.health-actions {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 6px;
-  max-width: 300px;
-}
-.health-issue.repairing {
-  color: var(--cyan);
-}
-.health-issue.hint {
-  font-style: italic;
-}
-.health-repair-all {
+.rejected-song {
   display: flex;
   align-items: center;
   gap: 14px;
-  margin: 4px 0 10px;
-  padding: 10px 14px;
-  border-radius: 10px;
-  background: var(--surface-2);
-  font-size: 13px;
+  margin: 6px 0 14px;
 }
-.health-repair-all p {
-  margin: 0;
-  flex: 1;
+.rejected-song img,
+.rejected-song .rejected-noimg {
+  width: 64px;
+  height: 64px;
+  border-radius: 10px;
+  object-fit: cover;
+  background: var(--surface-2);
+  flex: none;
+}
+.rejected-song div {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.rejected-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
 }

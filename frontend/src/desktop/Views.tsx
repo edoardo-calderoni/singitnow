@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
   Check,
@@ -238,14 +238,20 @@ export function SearchView({
   songs,
   onToast,
   onBack,
+  initialQuery = "",
 }: {
   songs: Song[];
   onToast: (m: string) => void;
   onBack: () => void;
+  initialQuery?: string; // es. dopo un'importazione rifiutata: si cercano subito altri video
 }) {
-  const [q, setQ] = useState("");
+  const [q, setQ] = useState(initialQuery);
   const search = useYoutubeSearch(onToast);
   const { results, busy } = search;
+  useEffect(() => {
+    if (initialQuery) search.run(initialQuery);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialQuery]);
   const byId = useMemo(() => new Map(songs.map((s) => [s.id, s])), [songs]);
 
   const run = (e?: React.FormEvent, text = q) => {

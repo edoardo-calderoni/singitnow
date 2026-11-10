@@ -319,3 +319,32 @@ def test_apertura_vera_cantata_resta():
     lines, voice, heard = _intro_song(-22.0)  # 10 dB sotto: cantato piano
     assert drop_intro(lines, voice, heard) == 0
     assert len(lines) == 8
+
+
+def _late_line():
+    """Silenzio, poi il cantante attacca a 10 s e tiene la nota fino alla riga, stimata a 12.5 s."""
+    import numpy as np
+
+    db = np.full(int(30 / _HOP), -60.0)
+    db[int(10.0 / _HOP) : int(16.0 / _HOP)] = -12.0
+    line = Line([Word("So", 12.5, 13.0), Word("tell", 13.0, 14.0), Word("me", 14.0, 16.0)])
+    return line, (db, -40.0)
+
+
+def test_riga_in_ritardo_parte_quando_il_cantante_attacca():
+    """Wannabe: «Yoooou… tell me what you want» cantato da 50 s, la riga stimata a 52.6 s."""
+    from singitnow.lyrics import early_line_starts
+
+    line, voice = _late_line()
+    heard = [Word("me", 14.2, 14.8)]  # Whisper non ha riconosciuto l'inizio
+    assert early_line_starts([line], voice, heard) == 1
+    assert line.words[0].start == pytest.approx(10.0, abs=0.05)
+
+
+def test_riga_confermata_da_whisper_non_si_anticipa():
+    """La voce prima della riga è un vocalizzo: Whisper ha sentito la parola dov'è."""
+    from singitnow.lyrics import early_line_starts
+
+    line, voice = _late_line()
+    assert early_line_starts([line], voice, [Word("So", 12.6, 13.0)]) == 0
+    assert line.words[0].start == 12.5

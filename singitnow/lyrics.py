@@ -806,10 +806,12 @@ _HOP = 0.02  # risoluzione dell'inviluppo della voce (secondi)
 # (4: note tenute, fix_held_notes; 5: ogni parola tenuta si allunga, non solo l'ultima della riga;
 #  6: la nota tenuta finisce al primo stacco dopo le sillabe della parola;
 #  7: parole che partono sulla coda della parola prima, o in pieno silenzio;
-#  8: via le introduzioni parlate o di sottofondo, drop_intro)
-SNAP_VERSION = 8
+#  8: via le introduzioni parlate o di sottofondo, drop_intro;
+#  9: la prima parola di una riga parte quando il cantante attacca davvero, anche se prima)
+SNAP_VERSION = 9
 _PHRASE_RANGE = 15.0  # dB sotto il volume tipico della frase entro cui la voce conta come «cantato»
 _SNAP_GAP = 0.3  # s di silenzio vero dentro una parola: la voce prima era la coda della parola precedente
+_EARLY_MAX = 3.0  # s: di quanto al massimo la prima parola di una riga può anticipare per seguire la voce
 
 
 def voice_activity(audio, sr: int = 16000):
@@ -893,6 +895,68 @@ def snap_to_voice(lines: list[Line], voice) -> int:
             if after.size:
                 w.start = min((a + k + q + after[0]) * _HOP, w.end - 0.08)
                 fixed += 1
+    return fixed
+
+
+def early_line_starts(lines: list[Line], voice, sung: list[Word]) -> int:
+    """La riga parte quando il cantante attacca, anche se prima del tempo stimato.
+
+    Dove Whisper non ha riconosciuto niente (in Wannabe per 20 secondi), l'inizio della riga è solo
+    una stima e può arrivare secondi dopo che il cantante ha attaccato («Yoooou… tell me what you
+    want»): la nota tenuta passava sotto i pallini dell'attesa. Se la voce attacca dopo un silenzio
+    e prosegue senza stacchi fino alla prima parola, la prima parola parte dall'attacco (al massimo
+    _EARLY_MAX secondi prima, mai dentro la riga precedente).
+
+    Solo se in quel tratto Whisper non ha sentito nessuna parola: dove ha sentito qualcosa, la voce
+    prima della riga è un vocalizzo o un coro, e la riga è già al suo posto. Restituisce le righe
+    anticipate.
+    """
+    import bisect
+
+    import numpy as np
+
+    db, song_thr = voice
+    heard = sorted(w.start for w in sung if w.start >= 0 and _norm(w.text))
+    hold = int(0.12 / _HOP)
+    fixed = 0
+    dip = int(0.1 / _HOP)  # cali più brevi (consonanti) non interrompono la voce
+    prev_end = 0.0
+    for l in lines:
+        if not l.words or l.words[0].start < 0:
+            continue
+        first = l.words[0]
+        la, lb = int(first.start / _HOP), int(l.words[-1].end / _HOP)
+        if lb - la >= 5 and la < len(db):
+            thr = max(song_thr, float(np.percentile(db[la:lb], 75)) - _PHRASE_RANGE)
+            lo = max(0, int(max(first.start - _EARLY_MAX, prev_end + 0.5) / _HOP))
+            k, quiet, onset = la, 0, la
+            while k > lo and db[la] > thr:
+                k -= 1
+                if db[k] > thr:
+                    onset, quiet = k, 0
+                else:
+                    quiet += 1
+                    if quiet > dip:
+                        break
+            # Whisper non ha sentito niente fra l'attacco e la riga, né all'inizio della riga (che
+            # altrimenti è confermato)
+            t0 = onset * _HOP
+            k = bisect.bisect_left(heard, t0 - 0.5)
+            unheard = k == len(heard) or heard[k] > first.start + 0.6
+            # prima dell'attacco silenzio vero, di almeno mezzo secondo (non un respiro dentro un
+            # vocalizzo, né il limite di ricerca), e la voce tiene davvero
+            pause = int(0.5 / _HOP)
+            if (
+                quiet > dip
+                and onset >= pause
+                and float(np.max(db[onset - pause : onset - 1])) <= thr + 4  # un respiro sì, la voce no
+                and first.start - t0 >= 0.3
+                and unheard
+                and np.all(db[onset : onset + hold] > thr)
+            ):
+                first.start = onset * _HOP
+                fixed += 1
+        prev_end = l.words[-1].end
     return fixed
 
 
@@ -1254,6 +1318,8 @@ def resnap_saved(song_dir: Path) -> int | None:
         sung = [Word(t, s, e) for seg in wj["segments"] for t, s, e in seg]
     except (OSError, ValueError, KeyError, TypeError):
         sung = []
+    if sung:
+        fixed += early_line_starts(lines, voice, sung)
     fixed += extend_to_voice(lines, voice, sung)
     if sung:
         fixed += fix_held_notes(lines, voice, sung, data.get("language", ""))
@@ -1437,6 +1503,7 @@ def build(
                 log.exception("Allineamento forzato non riuscito: uso i tempi stimati")
             clamp_line_starts(lines)
             snap_to_voice(lines, voiced)
+            early_line_starts(lines, voiced, sung)
             extend_to_voice(lines, voiced, sung)
             fix_held_notes(lines, voiced, sung, language)
             if text is None:  # il testo scritto a mano resta tutto

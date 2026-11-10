@@ -697,6 +697,72 @@ def _anchor_to_lrc(lines: list[Line], sung: list[Word], duration: float = 0.0) -
     return out_lines, ratio
 
 
+def uncrush_lines(lines: list[Line]) -> int:
+    """Righe schiacciate in un istante tornano al loro tempo di LRCLIB.
+
+    Una riga ripetuta che Whisper non sente («Qua dentro non si respira» quattro volte di fila,
+    sentita solo tre) resta senza parole abbinate, e la parola prima ha preso tutto lo spazio
+    («respira» per 3 secondi): le sue parole finivano tutte nello stesso istante. Si rimette la riga
+    dove la colloca LRCLIB nel video (`anchor`, il tempo LRC corretto dallo scarto locale), fino alla
+    riga dopo, e la riga prima si ferma lì. Restituisce le righe rimesse a posto.
+    """
+    fixed = 0
+    for i, l in enumerate(lines):
+        n = len(l.words)
+        if not n or l.anchor is None or l.words[0].start < 0:
+            continue
+        span = (l.words[-1].start - l.words[0].start) if n > 1 else (l.words[0].end - l.words[0].start)
+        if span >= (0.1 * (n - 1) if n > 1 else 0.15):
+            continue  # la riga ha il suo spazio
+        prev = next((m for m in reversed(lines[:i]) if m.words and m.words[0].start >= 0), None)
+        nxt = next((m.words[0].start for m in lines[i + 1 :] if m.words and m.words[0].start >= 0), None)
+        start = l.anchor
+        if prev is not None:
+            start = max(start, prev.words[0].start + 0.25 * len(prev.words))  # la riga prima ha il suo spazio
+        end = start + 0.45 * n + 1.0
+        if nxt is not None:
+            end = min(end, nxt - 0.1)
+        if end - start < 0.15 * n + 0.2:
+            continue  # non c'è posto: meglio lasciarla com'è
+        if prev is not None:
+            for w in prev.words:
+                if w.end > start:
+                    w.end = max(w.start + 0.08, start)
+        _distribute(l.words, start, end)
+        for w in l.words:
+            w.hold = -1.0
+        fixed += 1
+    return fixed
+
+
+def fit_lines(lines: list[Line]) -> int:
+    """Le parole di una riga non vanno oltre l'inizio della riga dopo.
+
+    Con testi molto ripetuti («Incominciamo (incominciamo)» sette volte, il video ne canta meno)
+    una parola non sentita può finire dopo l'inizio della riga successiva: le parole in coda alla
+    riga si ridistribuiscono nello spazio che resta prima della riga dopo. Restituisce le righe
+    sistemate.
+    """
+    fixed = 0
+    for i, l in enumerate(lines):
+        nxt = next((m.words[0].start for m in lines[i + 1 :] if m.words and m.words[0].start >= 0), None)
+        if nxt is None or len(l.words) < 2 or l.words[0].start < 0:
+            continue
+        k = next((k for k, w in enumerate(l.words) if k and w.start > nxt - 0.1), None)
+        if k is None:
+            continue
+        lo = l.words[k - 1].start + 0.15
+        hi = nxt - 0.05
+        if hi - lo < 0.1 * (len(l.words) - k):
+            continue  # non c'è posto
+        l.words[k - 1].end = min(l.words[k - 1].end, lo)
+        _distribute(l.words[k:], lo, hi)
+        for w in l.words[k - 1 :]:
+            w.hold = -1.0
+        fixed += 1
+    return fixed
+
+
 def _clamp_first_word(l: Line) -> bool:
     """La prima parola non parte prima dell'inizio ufficiale della riga (pausa assorbita da Whisper)."""
     first = l.words[0]
@@ -738,6 +804,7 @@ def _interpolate(flat: list[Word], duration: float) -> None:
 
 _ALIGN_MAX = 26.0  # durata massima di una finestra (Whisper ne elabora al massimo 30 s)
 _PAD = 0.6  # margine di audio prima e dopo le righe di una finestra
+_FORCE_DRIFT = 0.5  # s: spostamento oltre il quale la rifinitura contraddice una parola sentita da Whisper
 
 
 def _clean(text: str) -> str:
@@ -764,12 +831,13 @@ def _windows(lines: list[Line]) -> list[tuple[int, int]]:
     return out
 
 
-def force_align(lines: list[Line], audio, language: str) -> int:
+def force_align(lines: list[Line], audio, language: str, sung: list[Word] | None = None) -> int:
     """Rifinisce i tempi di ogni parola allineando il testo esatto alla voce con Whisper.
 
     I tempi approssimativi (riga per riga) servono solo a scegliere le finestre di audio;
     dentro ogni finestra Whisper sa *cosa* viene cantato e trova *quando*, parola per parola.
-    Restituisce il numero di parole aggiornate.
+    `sung` (la trascrizione) serve a riconoscere le rifiniture che portano una parola sentita dove
+    Whisper non l'ha sentita (vedi sotto). Restituisce il numero di parole aggiornate.
     """
     from faster_whisper.tokenizer import Tokenizer
     from faster_whisper.transcribe import pad_or_trim
@@ -783,6 +851,7 @@ def force_align(lines: list[Line], audio, language: str) -> int:
     sr = 16000
     total = len(audio) / sr
     updated = 0
+    said = _heard(sung or [])
     bounds = _windows(lines)
     for wi, (a, b) in enumerate(bounds):
         group = lines[a : b + 1]
@@ -827,10 +896,41 @@ def force_align(lines: list[Line], audio, language: str) -> int:
                     t0, t1 = w0 + float(aw["start"]), w0 + float(aw["end"])
                     starts[k] = t0 if starts[k] is None else min(starts[k], t0)
                     ends[k] = t1 if ends[k] is None else max(ends[k], t1)
+        # Le parole sentite da Whisper (abbinate: run >= 1) hanno già tempi affidabili: se in una
+        # riga la rifinitura ne sposta la maggior parte, lì il testo non è cantato com'è scritto
+        # (righe di LRCLIB che il video non ha, cori, parlato) e l'allineamento forzato ha
+        # distribuito le parole a caso («Che cazzata»: «Fabri» da 4,3 s, dove si sente, a 2,7 s).
+        # Quella riga tiene i tempi dell'abbinamento.
+        # Le righe senza parole sentite seguono le vicine: se una delle righe sentite accanto tiene i
+        # suoi tempi, li tengono anche loro (altrimenti si accavallano a quelle tenute).
+        found = dict(zip(map(id, words), starts))
+
+        def wrong(w: Word) -> bool:
+            """Rifinitura che porta lontano una parola sentita, dove Whisper non l'ha sentita (nelle
+            righe ripetute invece la sposta, giustamente, sulla ripetizione giusta)."""
+            t = found[id(w)]
+            return abs(t - w.start) > _FORCE_DRIFT and said(w.text, t - 0.4, t + 0.4) is None
+
+        state: list[bool | None] = []  # per riga: True = tiene i tempi, False = rifinita, None = non sentita
+        for l in group:
+            sure = [w for w in l.words if w.run >= 1 and w.start >= 0 and found[id(w)] is not None]
+            moved = sum(wrong(w) for w in sure)
+            state.append((moved * 2 > len(sure)) if sure else None)
+        keep: set[int] = set()
+        for k, l in enumerate(group):
+            st = state[k]
+            if st is None:
+                before = next((x for x in reversed(state[:k]) if x is not None), False)
+                after = next((x for x in state[k + 1 :] if x is not None), False)
+                st = before or after
+            if st:
+                keep.update(id(w) for w in l.words)
         for w, s, e in zip(words, starts, ends):
             # scarta risultati incoerenti con la posizione della riga (testo non cantato davvero)
-            if s is None or e is None or abs(s - w.start) > 3.0:
+            if s is None or e is None or abs(s - w.start) > 3.0 or id(w) in keep:
                 continue
+            if w.run >= 2 and wrong(w):
+                continue  # parola sentita in sequenza: la rifinitura non la porta dove non si sente
             w.start, w.end = s, max(e, s + 0.08)
             updated += 1
     # monotonia
@@ -1643,11 +1743,14 @@ def build(
         if ratio >= 0.3 or text is not None:
             # Rifinitura: Whisper allinea il testo esatto alla voce, parola per parola.
             on_progress(0.82, "Allineo ogni parola alla voce…")
+            uncrush_lines(lines)
             try:
-                n = force_align(lines, audio, language)
+                n = force_align(lines, audio, language, sung)
                 log.info("Allineamento forzato: %d parole", n)
             except Exception:
                 log.exception("Allineamento forzato non riuscito: uso i tempi stimati")
+            uncrush_lines(lines)
+            fit_lines(lines)
             clamp_line_starts(lines)
             snap_to_voice(lines, voiced)
             late_line_starts(lines, voiced, sung)

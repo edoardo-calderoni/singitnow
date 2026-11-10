@@ -457,3 +457,32 @@ def test_whisper_che_sente_la_parola_nel_fondo_non_basta():
     heard = [Word("Stanotte", 2.5, 3.4), Word("pretendo", 3.8, 5.5)]
     assert late_line_starts([line], voice, heard) == 1
     assert line.words[0].start == pytest.approx(3.0)
+
+
+def test_riga_ripetuta_non_sentita_torna_al_tempo_di_lrclib():
+    """«Qua dentro non si respira» quattro volte, Whisper ne sente tre: la riga mancante restava
+    schiacciata in un istante dietro a «respira» che si era preso tutto lo spazio."""
+    from singitnow.lyrics import uncrush_lines
+
+    def qua(t):
+        return [Word(x, t + 0.3 * k, t + 0.3 * k + 0.3) for k, x in enumerate(("Qua", "dentro", "non", "si", "respira"))]
+
+    first, crushed, third = Line(qua(16.0), anchor=16.0), Line(qua(0), anchor=18.0), Line(qua(20.2), anchor=20.2)
+    first.words[-1].end = 20.0  # «respira» lungo fino alla riga dopo
+    for w in crushed.words:
+        w.start, w.end = 17.5, 17.5
+    assert uncrush_lines([first, crushed, third]) == 1
+    assert crushed.words[0].start == pytest.approx(18.0)
+    assert crushed.words[-1].start > crushed.words[0].start + 1
+    assert crushed.words[-1].end <= 20.1
+    assert first.words[-1].end == pytest.approx(18.0)
+
+
+def test_parole_di_una_riga_non_oltre_la_riga_dopo():
+    from singitnow.lyrics import fit_lines
+
+    a = Line([Word("Incominciamo", 11.1, 11.3), Word("(incominciamo)", 14.3, 15.1)])
+    b = Line([Word("Incominciamo", 12.4, 13.3)])
+    assert fit_lines([a, b]) == 1
+    assert 11.1 < a.words[1].start < 12.4
+    assert a.words[1].end <= 12.4

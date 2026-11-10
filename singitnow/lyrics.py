@@ -853,8 +853,9 @@ _HOP = 0.02  # risoluzione dell'inviluppo della voce (secondi)
 #  8: via le introduzioni parlate o di sottofondo, drop_intro;
 #  9: la prima parola di una riga parte quando il cantante attacca davvero, anche se prima;
 # 10: la nota tenuta non si allunga sulla coda della voce, e il colore la segue a parte: `hold`;
-# 11: la prima parola non confermata parte quando la voce arriva al volume del canto: late_line_starts)
-SNAP_VERSION = 11
+# 11: la prima parola non confermata parte quando la voce arriva al volume del canto: late_line_starts;
+# 12: …anche se Whisper la sente prima, dove però c'è solo il fondo)
+SNAP_VERSION = 12
 _PHRASE_RANGE = 15.0  # dB sotto il volume tipico della frase entro cui la voce conta come «cantato»
 _SNAP_GAP = 0.3  # s di silenzio vero dentro una parola: la voce prima era la coda della parola precedente
 _EARLY_MAX = 3.0  # s: di quanto al massimo la prima parola di una riga può anticipare per seguire la voce
@@ -1057,11 +1058,18 @@ def late_line_starts(lines: list[Line], voice, sung: list[Word]) -> int:
         got = [h for h in near(t, -1.0, 0.3) if h >= first.start]  # attacco sentito, anche cantato piano
         if not got:
             continue
-        # Whisper ha riconosciuto proprio questa parola prima di lì: la voce più debole è sua
+        # Whisper ha riconosciuto proprio questa parola prima di lì e lì la voce è già al livello del
+        # canto: è un attacco più debole, ma suo. Se invece lì c'è solo il fondo, anche Whisper ha
+        # assorbito nella parola gli strumenti prima del canto («Marco» in «La solitudine»)
         h = said(first.text, first.start - 1.5, t + 0.3)
         if h is not None and h[0] < t - 0.3:
-            continue
-        new = min(max(got[0], first.start), t)  # dove Whisper l'ha sentita attaccare, se poco prima
+            k = int(h[0] / _HOP)
+            if float(np.max(db[k : k + int(0.2 / _HOP)])) > phrase - _SUNG_RANGE:
+                continue
+        # dove Whisper l'ha sentita attaccare, se poco prima e se lì la voce è già al livello del canto
+        k = int(got[0] / _HOP)
+        sung_there = float(np.max(db[k : k + int(0.2 / _HOP)])) > phrase - _SUNG_RANGE
+        new = min(max(got[0], first.start), t) if sung_there else t
         first.start = min(new, first.end - 0.08)
         first.hold = -1.0
         fixed += 1

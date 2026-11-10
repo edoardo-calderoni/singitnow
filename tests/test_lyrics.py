@@ -442,6 +442,18 @@ def test_prima_parola_riconosciuta_prima_non_si_sposta():
     line, voice = _bleed_intro()
     heard = [Word("Stanotte", 0.25, 1.0), Word("pretendo", 3.8, 5.5)]
     assert late_line_starts([line], voice, heard) == 0
-    line, voice = _bleed_intro()
+    # attacco breve ma al livello del canto, riconosciuto da Whisper: è suo («tanto» in Ti pretendo)
+    line, (db, thr) = _bleed_intro()
+    db[int(1.5 / _HOP) : int(1.58 / _HOP)] = -12.0
     heard = [Word("Stanotte", 1.5, 2.5), Word("ti", 3.0, 3.2), Word("pretendo", 3.8, 5.5)]
-    assert late_line_starts([line], voice, heard) == 0
+    assert late_line_starts([line], (db, thr), heard) == 0
+
+
+def test_whisper_che_sente_la_parola_nel_fondo_non_basta():
+    """«La solitudine»: Whisper sente «Marco» dentro gli strumenti, 0,5 s prima del canto."""
+    from singitnow.lyrics import late_line_starts
+
+    line, voice = _bleed_intro()
+    heard = [Word("Stanotte", 2.5, 3.4), Word("pretendo", 3.8, 5.5)]
+    assert late_line_starts([line], voice, heard) == 1
+    assert line.words[0].start == pytest.approx(3.0)

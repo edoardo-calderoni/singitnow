@@ -1502,6 +1502,17 @@ def remote():
     return _page("remote.html")
 
 
+@app.get("/splash.mp4", include_in_schema=False)
+@app.get("/splash-mobile.mp4", include_in_schema=False)
+def splash_video(request: Request):
+    """Video di avvio: il browser lo ricontrolla sempre (risponde 304 se non è cambiato), così un
+    video rifatto si vede subito invece di restare quello vecchio in cache."""
+    path = config.FRONTEND_DIST / request.url.path.lstrip("/")
+    if not path.exists():
+        raise HTTPException(404)
+    return FileResponse(path, media_type="video/mp4", headers={"Cache-Control": "no-cache"})
+
+
 APK = Path(__file__).with_name("static") / "SingITnow.apk"
 
 

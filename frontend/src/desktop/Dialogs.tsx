@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { FileText, Loader2, Search, X } from "lucide-react";
+import { Clock, FileText, Loader2, Search, X } from "lucide-react";
 import { Avatar } from "../shared/Avatar";
 import { api, LANGUAGES, SearchResult, Song } from "../shared/api";
 import { useImportNames } from "../shared/importNames";
@@ -186,11 +186,13 @@ export function EditDialog({
   onClose,
   onToast,
   onEditLyrics,
+  onEditTimings,
 }: {
   song: Song;
   onClose: () => void;
   onToast: (m: string) => void;
   onEditLyrics: () => void;
+  onEditTimings: () => void;
 }) {
   const [artist, setArtist] = useState(song.artist);
   const [title, setTitle] = useState(song.title);
@@ -248,7 +250,8 @@ export function EditDialog({
         </label>
         <p className="muted" style={{ margin: 0, fontSize: 13 }}>
           Se il testo è sbagliato o mancante, correggi artista e titolo e rigenera: verrà cercato di nuovo online e
-          risincronizzato con la voce. Oppure correggilo tu con «Modifica testo».
+          risincronizzato con la voce. Oppure correggilo tu con «Modifica testo»; se le parole si colorano fuori
+          tempo, sistemale con «Correggi i tempi».
         </p>
         {/* una sola riga: «Modifica testo» a sinistra, i salvataggi a destra */}
         <div className="actions">
@@ -259,6 +262,15 @@ export function EditDialog({
             onClick={onEditLyrics}
           >
             <FileText size={16} /> Modifica testo
+          </button>
+          <button
+            type="button"
+            className="btn btn-ghost edit-timings-btn"
+            disabled={busy || song.status !== "ready"}
+            onClick={onEditTimings}
+            title="Correggi a mano quando si colorano le parole"
+          >
+            <Clock size={16} /> Correggi i tempi
           </button>
           <button className="btn btn-ghost" disabled={busy} onClick={() => save(false)}>
             Salva

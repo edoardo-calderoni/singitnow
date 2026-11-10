@@ -511,3 +511,81 @@ def test_tratto_agganciato_alla_ripetizione_sbagliata_passa_all_ordine():
     # differenza piccola: si resta con LRCLIB
     lrc = mk([2.3, 7.3, 16.4, 18.4, 18.9, 31.8])
     assert adopt_confirmed_lines(lrc, plain, heard) == 0
+
+
+def _saved_song(tmp_path):
+    import json
+
+    data = {"source": "lrclib+whisper", "language": "it", "snap": 1, "lines": [
+        {"start": 1.0, "end": 2.0, "text": "uno due", "words": [{"t": "uno", "s": 1.0, "e": 1.5}, {"t": "due", "s": 1.5, "e": 2.0, "h": 1.7}]},
+        {"start": 3.0, "end": 4.0, "text": "tre", "words": [{"t": "tre", "s": 3.0, "e": 4.0}]},
+    ]}
+    (tmp_path / "lyrics.json").write_text(json.dumps(data), encoding="utf-8")
+    return data
+
+
+def test_tempi_corretti_a_mano_si_salvano(tmp_path):
+    import json
+
+    from singitnow.lyrics import TimingError, save_timings
+
+    _saved_song(tmp_path)
+    lines = [
+        {"words": [{"s": 1.2, "e": 1.6}, {"s": 1.6, "e": 2.2}], "manual": True},
+        {"words": [{"s": 3.1, "e": 4.0}], "manual": False},
+    ]
+    assert save_timings(tmp_path, lines, 200) == 1
+    data = json.loads((tmp_path / "lyrics.json").read_text(encoding="utf-8"))
+    first = data["lines"][0]
+    assert first["manual"] is True and first["start"] == 1.2 and first["end"] == 2.2
+    assert "h" not in first["words"][1]  # nota tenuta non mandata: si toglie
+    assert first["text"] == "uno due"  # il testo non cambia
+    assert "manual" not in data["lines"][1]
+    with pytest.raises(TimingError):
+        save_timings(tmp_path, lines[:1], 200)  # righe diverse
+    bad = [dict(lines[0]), {"words": [{"s": 0.5, "e": 4.0}]}]
+    with pytest.raises(TimingError):
+        save_timings(tmp_path, bad, 200)  # fuori ordine
+
+
+def test_righe_corrette_a_mano_restano_dopo_una_nuova_sincronizzazione():
+    from singitnow.lyrics import carry_manual
+
+    old = {"lines": [
+        {"text": "Yeah", "start": 6.0, "end": 6.4, "manual": True, "words": [{"t": "Yeah", "s": 6.0, "e": 6.4}]},
+        {"text": "Fabri", "start": 6.5, "end": 7.0, "words": [{"t": "Fabri", "s": 6.5, "e": 7.0}]},
+    ]}
+    new = {"lines": [
+        {"text": "Intro nuova", "start": 0.5, "end": 1.0, "words": [{"t": "Intro", "s": 0.5, "e": 0.7}, {"t": "nuova", "s": 0.7, "e": 1.0}]},
+        {"text": "Yeah", "start": 1.0, "end": 2.0, "words": [{"t": "Yeah", "s": 1.0, "e": 2.0}]},
+        {"text": "Fabri", "start": 2.3, "end": 3.0, "words": [{"t": "Fabri", "s": 2.3, "e": 3.0}]},
+    ]}
+    assert carry_manual(old, new) == 1
+    assert new["lines"][1]["words"][0]["s"] == 6.0 and new["lines"][1]["manual"] is True
+    assert new["lines"][2]["words"][0]["s"] == 2.3  # non corretta a mano: resta la nuova
+
+
+def test_righe_corrette_a_mano_non_si_toccano_nella_ricorrezione(tmp_path):
+    import json
+
+    import numpy as np
+
+    from singitnow import lyrics as L
+
+    _saved_song(tmp_path)
+    data = json.loads((tmp_path / "lyrics.json").read_text(encoding="utf-8"))
+    data["lines"][0]["manual"] = True
+    (tmp_path / "lyrics.json").write_text(json.dumps(data), encoding="utf-8")
+    (tmp_path / "vocals.m4a").write_bytes(b"x")
+    db = np.full(int(10 / _HOP), -60.0)
+    db[int(1.6 / _HOP) : int(2.5 / _HOP)] = -12.0  # la voce direbbe di spostare «uno»
+    db[int(3.0 / _HOP) : int(4.0 / _HOP)] = -12.0
+    orig = (L._load_16k, L.voice_activity)
+    L._load_16k, L.voice_activity = (lambda p: None), (lambda a: (db, -40.0))
+    try:
+        L.resnap_saved(tmp_path)
+    finally:
+        L._load_16k, L.voice_activity = orig
+    out = json.loads((tmp_path / "lyrics.json").read_text(encoding="utf-8"))
+    assert [(w["s"], w["e"]) for w in out["lines"][0]["words"]] == [(1.0, 1.5), (1.5, 2.0)]
+    assert out["lines"][0]["manual"] is True

@@ -498,6 +498,15 @@ class Pipeline:
                 with self._repair_lock:
                     self._repairing.remove(sid)
 
+    def lyrics_timed(self, song_id: str) -> None:
+        """Tempi corretti a mano nell'editor: le barre dell'intonazione seguono le parole."""
+
+        def run() -> None:
+            self._build_pitch(song_id)
+            library.update(song_id)  # avvisa i client: testo e note sono cambiati
+
+        threading.Thread(target=run, name="timings", daemon=True).start()
+
     def set_lyrics_text(self, song_id: str, text: str) -> None:
         """Testo corretto a mano dall'app principale: si tiene così com'è e si risincronizza con la voce."""
         threading.Thread(target=self._lyrics_only, args=(song_id, text), daemon=True).start()
@@ -513,6 +522,12 @@ class Pipeline:
             text=text,
             fallback=fallback,
         )
+        try:  # righe corrette a mano nell'editor: tengono i loro tempi se ci sono ancora
+            old = json.loads((s.dir / "lyrics.json").read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            old = None
+        if lyrics.carry_manual(old, data):
+            log.info("Testo di %s rigenerato tenendo le righe corrette a mano", sid)
         (s.dir / "lyrics.json").write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
         library.update(sid, lyrics_source=data["source"], language=data.get("language", ""))
 

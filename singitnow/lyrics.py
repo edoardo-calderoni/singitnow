@@ -47,6 +47,7 @@ class Line:
     lrc_time: float | None = None  # tempo LRC originale (se disponibile)
     anchor: float | None = None  # inizio della riga nel video (tempo LRC corretto dallo scarto locale)
     orig: str = ""  # riga originale in giapponese, mostrata sotto il romaji
+    manual: bool = False  # tempi corretti a mano nell'editor: le correzioni automatiche non la toccano
 
     @property
     def text(self) -> str:
@@ -1573,8 +1574,8 @@ def drop_intro(lines: list[Line], voice, sung: list[Word]) -> int:
             ),
             0,
         )
-        if not k or len(lines) - k < max(4, 2 * k):
-            break
+        if not k or len(lines) - k < max(4, 2 * k) or any(l.manual for l in lines[:k]):
+            break  # niente introduzione da togliere (o corretta a mano: è da cantare)
         intro, song = level(lines[:k]), level(lines[k:])
         quiet = intro is not None and song is not None and intro <= song - _INTRO_QUIET
         checkable = sung and any(len(_norm(w.text)) >= 3 for l in lines[:k] for w in l.words)
@@ -1605,10 +1606,16 @@ def resnap_saved(song_dir: Path) -> int | None:
     if data.get("snap") == SNAP_VERSION or not data.get("lines") or not vocals.exists():
         return None
     lines = [
-        Line([Word(w["t"], w["s"], w["e"], orig=w.get("o", "")) for w in l["words"]], orig=l.get("orig", ""))
+        Line(
+            [Word(w["t"], w["s"], w["e"], orig=w.get("o", ""), hold=w.get("h", -1.0)) for w in l["words"]],
+            orig=l.get("orig", ""),
+            manual=bool(l.get("manual")),
+        )
         for l in data["lines"]
         if l.get("words")
     ]
+    # righe corrette a mano: si rimettono com'erano dopo le correzioni automatiche
+    kept = {id(l): [(w.start, w.end, w.hold) for w in l.words] for l in lines if l.manual}
     voice = voice_activity(_load_16k(vocals))
     fixed = snap_to_voice(lines, voice)
     try:  # trascrizione di Whisper salvata: serve a confermare le correzioni sulle note tenute
@@ -1624,9 +1631,97 @@ def resnap_saved(song_dir: Path) -> int | None:
         fixed += fix_held_notes(lines, voice, sung, data.get("language", ""))
     if not data.get("source", "").startswith("manual"):  # il testo scritto a mano resta tutto
         fixed += drop_intro(lines, voice, sung)
+    for l in lines:
+        for w, (a, b, h) in zip(l.words, kept.get(id(l), ())):
+            w.start, w.end, w.hold = a, b, h
     out = to_json(lines, data.get("source", ""), data.get("language", ""))
     path.write_text(json.dumps(out, ensure_ascii=False), encoding="utf-8")
     return fixed
+
+
+# --------------------------------------------------------------------------- Correzioni a mano
+
+
+def voice_envelope(vocals: Path) -> dict:
+    """Andamento della voce isolata per la linea del tempo dell'editor: un valore 0..100 ogni _HOP
+    secondi (0 = silenzio, sotto la soglia del brano; 100 = i passaggi più forti)."""
+    import numpy as np
+
+    db, thr = voice_activity(_load_16k(vocals))
+    top = float(np.percentile(db, 99.5))
+    lo = thr - 6
+    env = np.clip((db - lo) / max(top - lo, 1.0), 0, 1) * 100
+    return {"hop": _HOP, "env": [int(round(x)) for x in env]}
+
+
+class TimingError(ValueError):
+    """Tempi corretti a mano non validi (il messaggio è per l'utente)."""
+
+
+def save_timings(song_dir: Path, new_lines: list[dict], duration: float = 0.0) -> int:
+    """Salva i tempi corretti a mano nell'editor: il testo resta quello salvato, cambiano solo inizio
+    e fine delle parole. `new_lines`: per ogni riga {"words": [{"s", "e", "h"?}], "manual": bool}, nello
+    stesso numero e ordine delle righe e delle parole salvate. Restituisce le righe corrette a mano."""
+    import json
+    import math
+
+    path = song_dir / "lyrics.json"
+    data = json.loads(path.read_text(encoding="utf-8"))
+    lines = data.get("lines") or []
+    if len(new_lines) != len(lines):
+        raise TimingError("Il testo è cambiato nel frattempo: riapri l'editor")
+    limit = (duration or 0) + 5 if duration else math.inf
+    prev = -math.inf
+    for l, n in zip(lines, new_lines):
+        words = n.get("words") or []
+        if len(words) != len(l.get("words") or []):
+            raise TimingError("Il testo è cambiato nel frattempo: riapri l'editor")
+        for w, nw in zip(l["words"], words):
+            s, e = float(nw["s"]), float(nw["e"])
+            if not (math.isfinite(s) and math.isfinite(e)) or s < 0 or e > limit or e < s:
+                raise TimingError(f"Tempi non validi alla parola «{w['t']}»")
+            if s < prev - 0.01:
+                raise TimingError(f"La parola «{w['t']}» inizia prima di quella che la precede")
+            prev = s
+            w["s"], w["e"] = round(s, 3), round(e, 3)
+            h = nw.get("h")
+            if h is not None and s < float(h) < e:
+                w["h"] = round(float(h), 3)
+            else:
+                w.pop("h", None)
+        if l.get("words"):
+            l["start"], l["end"] = l["words"][0]["s"], l["words"][-1]["e"]
+        if n.get("manual"):
+            l["manual"] = True
+        else:
+            l.pop("manual", None)
+    path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+    return sum(1 for l in lines if l.get("manual"))
+
+
+def carry_manual(old: dict | None, new: dict) -> int:
+    """Testo rigenerato (risincronizzazione, «Ripara i testi», testo modificato): le righe corrette a
+    mano tengono i loro tempi, se la riga c'è ancora uguale. Le righe si ritrovano nell'ordine
+    (righe ripetute comprese) confrontando il testo. Restituisce le righe riprese."""
+    if not old or not any(l.get("manual") for l in old.get("lines") or []):
+        return 0
+    a = [l.get("text", "") for l in old["lines"]]
+    b = [l.get("text", "") for l in new.get("lines") or []]
+    taken = 0
+    for blk in SequenceMatcher(None, a, b, autojunk=False).get_matching_blocks():
+        for k in range(blk.size):
+            o, n = old["lines"][blk.a + k], new["lines"][blk.b + k]
+            if not o.get("manual") or len(o.get("words") or []) != len(n.get("words") or []):
+                continue
+            for ow, nw in zip(o["words"], n["words"]):
+                nw["s"], nw["e"] = ow["s"], ow["e"]
+                if "h" in ow:
+                    nw["h"] = ow["h"]
+                else:
+                    nw.pop("h", None)
+            n["start"], n["end"], n["manual"] = o["start"], o["end"], True
+            taken += 1
+    return taken
 
 
 def _split_long(words: list[Word], max_words: int = 9) -> list[list[Word]]:
@@ -1651,6 +1746,8 @@ def to_json(lines: list[Line], source: str, language: str) -> dict:
         for w, d in zip(l.words, item["words"]):
             if w.start + 0.05 < w.hold <= w.end - _HOLD_MIN:
                 d["h"] = round(w.hold, 3)  # da qui la parola è pronunciata: resta la nota tenuta
+        if l.manual:
+            item["manual"] = True
         orig = l.orig or "".join(w.orig or w.text for w in l.words) if any(w.orig for w in l.words) else l.orig
         if orig:
             item["orig"] = orig  # riga originale (giapponese) sotto il romaji

@@ -107,6 +107,8 @@ export interface LyricLine {
   text: string;
   /** riga originale quando `text` è una trascrizione (giapponese → romaji) */
   orig?: string;
+  /** tempi corretti a mano nell'editor (le correzioni automatiche non la toccano) */
+  manual?: boolean;
   words: LyricWord[];
 }
 export interface Lyrics {
@@ -315,6 +317,11 @@ export const api = {
   patchSong: (id: string, data: Partial<Pick<Song, "artist" | "title" | "language">>) =>
     req<Song>("PATCH", `/api/songs/${id}`, data),
   setLyrics: (id: string, text: string) => req("PUT", `/api/songs/${id}/lyrics`, { text }),
+  /** Andamento della voce isolata (0..100 ogni `hop` secondi), per l'editor dei tempi. */
+  voiceEnvelope: (id: string) => req<{ hop: number; env: number[] }>("GET", `/api/songs/${id}/voice`),
+  /** Tempi delle parole corretti a mano (stesse righe e parole del testo salvato). */
+  setTimings: (id: string, lines: { manual: boolean; words: { s: number; e: number; h: number | null }[] }[]) =>
+    req<{ ok: boolean; manual: number }>("PUT", `/api/songs/${id}/timings`, { lines }),
   resync: (id: string, artist: string, title: string) =>
     req("POST", `/api/songs/${id}/lyrics/resync`, { artist, title }),
   search: (q: string, limit = 12) =>

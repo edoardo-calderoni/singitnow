@@ -19,7 +19,7 @@ from pydantic import BaseModel
 
 from . import (
     __version__, admin, audio, avatars, backup, competition, config, halloffame, mics, mode, names, party, people,
-    keyfit, profiles, quiz,
+    keyfit, lyrics, profiles, quiz,
     recordings, stats, storage, wifi, youtube,
 )
 from .events import hub
@@ -150,6 +150,45 @@ def song_lyrics(song_id: str):
     if not path or not path.exists():
         raise HTTPException(404, "Testo non disponibile")
     return json.loads(path.read_text(encoding="utf-8"))
+
+
+@app.get("/api/songs/{song_id}/voice", dependencies=[Depends(admin.require_control)])
+def song_voice(song_id: str):
+    """Andamento della voce isolata, per la linea del tempo dell'editor dei tempi."""
+    song = library.get(song_id)
+    vocals = song.dir / "vocals.m4a" if song else None
+    if not vocals or not vocals.exists():
+        raise HTTPException(404, "Voce non disponibile")
+    return lyrics.voice_envelope(vocals)
+
+
+class TimedWord(BaseModel):
+    s: float
+    e: float
+    h: float | None = None
+
+
+class TimedLine(BaseModel):
+    words: list[TimedWord]
+    manual: bool = False
+
+
+class TimingsReq(BaseModel):
+    lines: list[TimedLine]
+
+
+@app.put("/api/songs/{song_id}/timings", dependencies=[Depends(admin.require_control)])
+def set_timings(song_id: str, req: TimingsReq):
+    """Tempi delle parole corretti a mano nell'editor (il testo non cambia)."""
+    song = library.get(song_id)
+    if not song or song.status != READY:
+        raise HTTPException(409, "Il brano deve essere pronto")
+    try:
+        manual = lyrics.save_timings(song.dir, [l.model_dump() for l in req.lines], song.duration)
+    except (OSError, ValueError, KeyError) as e:
+        raise HTTPException(400, str(e) if isinstance(e, lyrics.TimingError) else "Tempi non salvati")
+    pipeline.lyrics_timed(song_id)
+    return {"ok": True, "manual": manual}
 
 
 @app.get("/api/songs/{song_id}/pitch")

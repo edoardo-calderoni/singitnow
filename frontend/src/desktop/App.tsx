@@ -5,6 +5,7 @@ import { entryStarts, fmtWait, useTick } from "../shared/queue";
 import { useLive } from "../shared/live";
 import { Avatar } from "../shared/Avatar";
 import { EditDialog, LyricsDialog, SingerDialog } from "./Dialogs";
+import { TimingEditor } from "./TimingEditor";
 import { enterFullscreen, exitFullscreen, Player, toggleFullscreen } from "./Player";
 import { RequestEvent, RequestToasts, useRequests } from "./Requests";
 import { HandoverBanner, useHandover } from "./Handover";
@@ -59,6 +60,7 @@ export function App() {
   const [queueFor, setQueueFor] = useState<Song | null>(null);
   const [editing, setEditing] = useState<Song | null>(null);
   const [lyricsFor, setLyricsFor] = useState<Song | null>(null);
+  const [timingFor, setTimingFor] = useState<Song | null>(null);
   // QR code d'ingresso mostrato per qualche secondo nell'angolo (richiesto da un amministratore)
   const jukebox = useJukebox();
   const [qrShown, setQrShown] = useState(false);
@@ -420,9 +422,11 @@ export function App() {
           onClose={() => setEditing(null)}
           onToast={setToast}
           onEditLyrics={() => (setLyricsFor(editing), setEditing(null))}
+          onEditTimings={() => (setTimingFor(editing), setEditing(null))}
         />
       )}
       {lyricsFor && <LyricsDialog song={lyricsFor} onClose={() => setLyricsFor(null)} onToast={setToast} />}
+      {timingFor && <TimingEditor song={timingFor} onClose={() => setTimingFor(null)} onToast={setToast} />}
       {rejected && !nowSong && (
         // l'app sul PC è anche lo schermo della TV: l'avviso aspetta che non suoni niente
         <RejectedDialog
@@ -442,7 +446,7 @@ export function App() {
       <ResultsHost />
       <QuizOverlay />
       {/* sottofondo della schermata principale: sfuma quando parte la playlist */}
-      <BackgroundMusic active={!splash && !now && !resultsOpen && !winner} />
+      <BackgroundMusic active={!splash && !now && !resultsOpen && !winner && !timingFor} />
       {splash && <Splash onDone={splashDone} />}
       {rankingShown !== null && <RankingCorner seconds={rankingShown} onClose={() => setRankingShown(null)} />}
       {winner && !nowSong && <WinnerScreen standings={winner} onClose={() => setWinner(null)} />}

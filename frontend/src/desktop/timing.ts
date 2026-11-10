@@ -1,0 +1,154 @@
+/**
+ * Operazioni dell'editor dei tempi del testo: ognuna parte da una copia delle righe e restituisce
+ * le righe corrette (le righe toccate diventano «corrette a mano»). Mai una parola che inizia prima
+ * della precedente, mai una parola più corta di MIN.
+ */
+import type { LyricLine } from "../shared/api";
+
+export type EdLine = LyricLine & { manual?: boolean };
+
+export const MIN = 0.05; // s: durata minima di una parola
+
+export function clone(lines: EdLine[]): EdLine[] {
+  return lines.map((l) => ({ ...l, words: l.words.map((w) => ({ ...w })) }));
+}
+
+function touch(l: EdLine): void {
+  l.manual = true;
+  if (l.words.length) {
+    l.start = l.words[0]!.s;
+    l.end = l.words[l.words.length - 1]!.e;
+  }
+}
+
+/** Parola prima e dopo (anche nelle righe vicine). */
+function neighbours(ls: EdLine[], i: number, j: number) {
+  const prev = j > 0 ? { i, j: j - 1 } : i > 0 && ls[i - 1]!.words.length ? { i: i - 1, j: ls[i - 1]!.words.length - 1 } : null;
+  const line = ls[i]!;
+  const next =
+    j + 1 < line.words.length ? { i, j: j + 1 } : i + 1 < ls.length && ls[i + 1]!.words.length ? { i: i + 1, j: 0 } : null;
+  return { prev, next };
+}
+
+const W = (ls: EdLine[], p: { i: number; j: number }) => ls[p.i]!.words[p.j]!;
+
+/** Sposta una riga intera di `delta` secondi (le parole la seguono), senza scavalcare le vicine. */
+export function shiftLine(src: EdLine[], i: number, delta: number): EdLine[] {
+  const ls = clone(src);
+  const line = ls[i];
+  if (!line || !line.words.length) return ls;
+  const first = line.words[0]!;
+  const last = line.words[line.words.length - 1]!;
+  const prev = ls[i - 1]?.words;
+  const next = ls[i + 1]?.words;
+  const lo = (prev?.length ? prev[prev.length - 1]!.s + MIN : 0) - first.s;
+  const hi = next?.length ? next[0]!.s - MIN - last.s : Infinity;
+  const d = Math.min(Math.max(delta, lo), hi);
+  for (const w of line.words) {
+    w.s += d;
+    w.e += d;
+    if (w.h !== undefined) w.h += d;
+  }
+  if (prev?.length) {
+    const p = prev[prev.length - 1]!;
+    if (p.e > first.s) p.e = Math.max(p.s + MIN, first.s);
+  }
+  if (next?.length && last.e > next[0]!.s) last.e = Math.max(last.s + MIN, next[0]!.s);
+  touch(line);
+  if (prev?.length) touch(ls[i - 1]!);
+  return ls;
+}
+
+/** Sposta questa riga e tutte quelle dopo di `delta` secondi. */
+export function shiftFrom(src: EdLine[], i: number, delta: number): EdLine[] {
+  const ls = clone(src);
+  const first = ls[i]?.words[0];
+  if (!first) return ls;
+  const prev = ls[i - 1]?.words;
+  const lo = (prev?.length ? prev[prev.length - 1]!.s + MIN : 0) - first.s;
+  const d = Math.max(delta, lo);
+  for (const l of ls.slice(i)) {
+    for (const w of l.words) {
+      w.s += d;
+      w.e += d;
+      if (w.h !== undefined) w.h += d;
+    }
+    touch(l);
+  }
+  if (prev?.length) {
+    const p = prev[prev.length - 1]!;
+    if (p.e > first.s) {
+      p.e = Math.max(p.s + MIN, first.s);
+      touch(ls[i - 1]!);
+    }
+  }
+  return ls;
+}
+
+/** Cambia inizio e/o fine di una parola; le parole vicine si accorciano se serve. */
+export function setWord(src: EdLine[], i: number, j: number, s?: number, e?: number): EdLine[] {
+  const ls = clone(src);
+  const w = ls[i]?.words[j];
+  if (!w) return ls;
+  const { prev, next } = neighbours(ls, i, j);
+  // limiti: dopo l'inizio della parola prima, prima della fine della parola dopo
+  const lo = prev ? W(ls, prev).s + MIN : 0;
+  const hi = next ? W(ls, next).e - MIN : Infinity;
+  let ns = Math.max(s ?? w.s, lo);
+  let ne = Math.min(Math.max(e ?? w.e, ns + MIN), hi);
+  if (ne - ns < MIN) ns = Math.max(lo, ne - MIN); // spazio strettissimo: si cede sull'inizio
+  w.s = ns;
+  w.e = ne;
+  if (prev && W(ls, prev).e > ns) {
+    W(ls, prev).e = ns;
+    touch(ls[prev.i]!);
+  }
+  if (next && W(ls, next).s < ne) {
+    W(ls, next).s = ne;
+    touch(ls[next.i]!);
+  }
+  delete w.h; // la nota tenuta calcolata non vale più
+  touch(ls[i]!);
+  return ls;
+}
+
+/** Sposta una parola (inizio e fine insieme) di `delta` secondi. */
+export function moveWord(src: EdLine[], i: number, j: number, delta: number): EdLine[] {
+  const w = src[i]?.words[j];
+  if (!w) return clone(src);
+  const { prev, next } = neighbours(src, i, j);
+  const lo = (prev ? W(src, prev).s + MIN : 0) - w.s;
+  const hi = next ? W(src, next).e - MIN - w.e : Infinity;
+  const d = Math.min(Math.max(delta, lo), hi);
+  return setWord(src, i, j, w.s + d, w.e + d);
+}
+
+/** Correzione al volo: la riga parte adesso (le sue parole la seguono). */
+export function tapLine(src: EdLine[], i: number, t: number): EdLine[] {
+  const first = src[i]?.words[0];
+  return first ? shiftLine(src, i, t - first.s) : clone(src);
+}
+
+/** Correzione al volo: la parola parte adesso; la parola prima della stessa riga finisce qui. */
+export function tapWord(src: EdLine[], i: number, j: number, t: number): EdLine[] {
+  const w = src[i]?.words[j];
+  if (!w) return clone(src);
+  const dur = Math.max(w.e - w.s, 0.2);
+  const { next } = neighbours(src, i, j);
+  let e = w.e > t + MIN ? w.e : t + dur;
+  if (next) e = Math.min(e, Math.max(src[next.i]!.words[next.j]!.s, t + MIN));
+  let ls = setWord(src, i, j, t, Math.max(e, t + MIN));
+  if (j > 0) {
+    const p = ls[i]!.words[j - 1]!;
+    if (p.e < ls[i]!.words[j]!.s) ls = setWord(ls, i, j - 1, undefined, ls[i]!.words[j]!.s);
+  }
+  return ls;
+}
+
+/** Riga riportata ai tempi di partenza (quelli caricati all'apertura dell'editor). */
+export function restoreLine(src: EdLine[], original: EdLine[], i: number): EdLine[] {
+  const ls = clone(src);
+  const o = original[i];
+  if (o) ls[i] = { ...o, words: o.words.map((w) => ({ ...w })) };
+  return ls;
+}

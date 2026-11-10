@@ -612,3 +612,28 @@ def test_righe_e_parole_eliminate_nell_editor(tmp_path):
     ):
         with pytest.raises(TimingError):
             save_timings(tmp_path, bad, 200)
+
+
+def test_riga_riscritta_nell_editor(tmp_path):
+    import json
+
+    from singitnow.lyrics import TimingError, save_timings
+
+    _saved_song(tmp_path)  # «uno due» (parole 0, 1) e «tre» (parola 2)
+    lines = [
+        {"edited": True, "words": [{"t": "uno", "s": 1.0, "e": 1.3}, {"t": "e", "s": 1.3, "e": 1.5}, {"t": "due", "s": 1.5, "e": 2.0}]},
+        {"words": [{"k": 2, "t": "tre", "s": 3.0, "e": 4.0}]},
+    ]
+    assert save_timings(tmp_path, lines, 200) == 1
+    data = json.loads((tmp_path / "lyrics.json").read_text(encoding="utf-8"))
+    assert [l["text"] for l in data["lines"]] == ["uno e due", "tre"]
+    assert data["lines"][0]["manual"] is True and data["lines"][0]["end"] == 2.0
+    assert "manual" not in data["lines"][1]
+
+    _saved_song(tmp_path)
+    bad = [{"edited": True, "words": [{"t": "due parole", "s": 1.0, "e": 2.0}]}]
+    with pytest.raises(TimingError):
+        save_timings(tmp_path, bad, 200)  # una «parola» con spazi
+    bad = [{"edited": True, "words": [{"t": "x", "s": 5.0, "e": 6.0}]}, {"words": [{"k": 2, "t": "tre", "s": 3.0, "e": 4.0}]}]
+    with pytest.raises(TimingError):
+        save_timings(tmp_path, bad, 200)  # fuori ordine

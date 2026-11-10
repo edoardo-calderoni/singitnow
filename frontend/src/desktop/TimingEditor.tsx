@@ -1,13 +1,15 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { MouseEvent as RMouseEvent, PointerEvent as RPointerEvent, ReactElement, WheelEvent as RWheelEvent } from "react";
-import { Check, Hand, Loader2, Mic, Music, Pause, Play, RotateCcw, Trash2, Undo2, ZoomIn, ZoomOut } from "lucide-react";
+import { Check, FileText, Hand, Loader2, Mic, Music, Pause, Play, RotateCcw, Trash2, Undo2, ZoomIn, ZoomOut } from "lucide-react";
 import { api, Song } from "../shared/api";
+import { LyricsDialog } from "./Dialogs";
 import { activeIndex, switchTimes, wordFill } from "../shared/lyrics";
 import {
   clone,
   deleteLine,
   deleteWord,
   EdLine,
+  editLineText,
   moveWord,
   restoreLine,
   setWord,
@@ -68,6 +70,7 @@ export function TimingEditor({ song, onClose, onToast }: { song: Song; onClose: 
   const [busy, setBusy] = useState(false);
   const [view, setView] = useState({ left: 0, width: 1000 });
   const [menu, setMenu] = useState<Menu | null>(null);
+  const [fullText, setFullText] = useState(false); // «Testo intero»: riscrivere tutto e risincronizzare
 
   const voiceRef = useRef<HTMLAudioElement>(null);
   const songRef = useRef<HTMLAudioElement>(null);
@@ -83,8 +86,12 @@ export function TimingEditor({ song, onClose, onToast }: { song: Song; onClose: 
         const ls = withIds(l.lines);
         setLines(clone(ls));
         setOriginal(clone(ls));
+        if (!ls.length) setFullText(true); // niente testo: si scrive tutto
       })
-      .catch((e) => onToast(e.message));
+      .catch(() => {
+        setLines([]);
+        setFullText(true);
+      });
     api
       .voiceEnvelope(song.id)
       .then(setEnv)
@@ -232,6 +239,7 @@ export function TimingEditor({ song, onClose, onToast }: { song: Song; onClose: 
         song.id,
         lines.map((l) => ({
           manual: !!l.manual,
+          edited: l.words.some((w) => w.k === undefined), // riga riscritta nell'editor
           words: l.words.map((w) => ({ k: w.k, t: w.t, s: w.s, e: w.e, h: w.h ?? null })),
         })),
       );
@@ -348,7 +356,22 @@ export function TimingEditor({ song, onClose, onToast }: { song: Song; onClose: 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [zoom]);
 
-  if (!lines) {
+  const openFullText = () => {
+    if (dirty && !confirm("Riscrivendo il testo intero le correzioni non salvate vanno perse. Continuare?")) return;
+    for (const m of media()) m.pause();
+    setFullText(true);
+  };
+  const fullTextDialog = fullText && (
+    <LyricsDialog
+      song={song}
+      onToast={onToast}
+      onClose={() => (lines?.length ? setFullText(false) : onClose())}
+      onSaved={onClose}
+    />
+  );
+
+  if (!lines || !lines.length) {
+    if (lines && fullTextDialog) return <div className="timing-editor">{fullTextDialog}</div>;
     return (
       <div className="timing-editor">
         <div className="te-loading">
@@ -372,13 +395,20 @@ export function TimingEditor({ song, onClose, onToast }: { song: Song; onClose: 
 
       <header className="te-head">
         <div className="te-title">
-          <h3>Correggi i tempi</h3>
+          <h3>Testo e tempi</h3>
           <span className="muted">
             {song.title} · {song.artist}
             {manualCount > 0 && ` · ${manualCount} ${manualCount === 1 ? "riga corretta" : "righe corrette"} a mano`}
           </span>
         </div>
         <div className="te-actions">
+          <button
+            className="btn btn-ghost"
+            onClick={openFullText}
+            title="Riscrivi o incolla tutto il testo: verrà risincronizzato con la voce"
+          >
+            <FileText size={16} /> Testo intero
+          </button>
           <button className="btn btn-ghost" disabled={!history.length} onClick={undo} title="Annulla (Ctrl+Z)">
             <Undo2 size={16} /> Annulla
           </button>
@@ -469,6 +499,11 @@ export function TimingEditor({ song, onClose, onToast }: { song: Song; onClose: 
           onShiftFrom={(d) => commit(shiftFrom(lines, sel.i, d))}
           onRestore={() => commit(restoreLine(lines, original, sel.i))}
           onMenu={openMenu}
+          onEditText={(i, text) => {
+            const next = editLineText(lines, i, text);
+            if (!next.length) return onToast("Il testo non può restare vuoto");
+            if (JSON.stringify(next) !== JSON.stringify(lines)) commit(next);
+          }}
         />
       </div>
 
@@ -511,6 +546,7 @@ export function TimingEditor({ song, onClose, onToast }: { song: Song; onClose: 
           </div>
         </div>
       )}
+      {fullTextDialog}
     </div>
   );
 }
@@ -547,6 +583,7 @@ const LineList = memo(function LineList({
   onShiftFrom,
   onRestore,
   onMenu,
+  onEditText,
 }: {
   lines: EdLine[];
   sel: number;
@@ -555,8 +592,15 @@ const LineList = memo(function LineList({
   onShiftFrom: (d: number) => void;
   onRestore: () => void;
   onMenu: (e: RMouseEvent, i: number, j: number | null) => void;
+  onEditText: (i: number, text: string) => void;
 }) {
-  const selRef = useRef<HTMLButtonElement>(null);
+  const selRef = useRef<HTMLElement | null>(null);
+  // riga in modifica: primo clic seleziona, secondo clic (sulla riga già selezionata) la apre
+  const [editing, setEditing] = useState<{ i: number; text: string } | null>(null);
+  const finish = (ok: boolean) => {
+    if (editing && ok) onEditText(editing.i, editing.text);
+    setEditing(null);
+  };
   useEffect(() => {
     // con le graffe: nei Chrome recenti scrollIntoView restituisce una Promise, non una pulizia
     selRef.current?.scrollIntoView({ block: "nearest" });
@@ -593,19 +637,40 @@ const LineList = memo(function LineList({
         </div>
       </div>
       <div className="te-list">
-        {lines.map((l, i) => (
-          <button
-            key={l.id ?? i}
-            ref={i === sel ? selRef : undefined}
-            className={`te-item ${i === sel ? "sel" : ""}`}
-            onClick={() => onSelect(i)}
-            onContextMenu={(e) => onMenu(e, i, null)}
-          >
-            <span className="te-item-time">{fmt(l.words[0]?.s ?? l.start)}</span>
-            <span className="te-item-text">{l.text}</span>
-            {l.manual && <span className="te-badge" title="Corretta a mano: le correzioni automatiche non la toccano">a mano</span>}
-          </button>
-        ))}
+        {lines.map((l, i) =>
+          editing?.i === i ? (
+            <div key={l.id ?? `n${i}`} ref={(el) => void (i === sel && (selRef.current = el))} className="te-item sel editing">
+              <span className="te-item-time">{fmt(l.words[0]?.s ?? l.start)}</span>
+              <input
+                className="te-item-input"
+                value={editing.text}
+                autoFocus
+                onFocus={(e) => e.currentTarget.select()}
+                onChange={(e) => setEditing({ i, text: e.target.value })}
+                onBlur={() => finish(true)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") finish(true);
+                  else if (e.key === "Escape") finish(false);
+                  e.stopPropagation();
+                }}
+                spellCheck={false}
+              />
+            </div>
+          ) : (
+            <button
+              key={l.id ?? `n${i}`}
+              ref={(el) => void (i === sel && (selRef.current = el))}
+              className={`te-item ${i === sel ? "sel" : ""}`}
+              onClick={() => (i === sel ? setEditing({ i, text: l.text }) : onSelect(i))}
+              onContextMenu={(e) => onMenu(e, i, null)}
+              title={i === sel ? "Clic per modificare il testo della riga" : undefined}
+            >
+              <span className="te-item-time">{fmt(l.words[0]?.s ?? l.start)}</span>
+              <span className="te-item-text">{l.text}</span>
+              {l.manual && <span className="te-badge" title="Corretta a mano: le correzioni automatiche non la toccano">a mano</span>}
+            </button>
+          ),
+        )}
       </div>
     </aside>
   );

@@ -324,7 +324,7 @@ export const api = {
   /** Tempi delle parole corretti a mano (stesse righe e parole del testo salvato). */
   setTimings: (
     id: string,
-    lines: { manual: boolean; words: { k?: number; t?: string; s: number; e: number; h: number | null }[] }[],
+    lines: { manual: boolean; edited?: boolean; words: { k?: number; t?: string; s: number; e: number; h: number | null }[] }[],
   ) =>
     req<{ ok: boolean; manual: number }>("PUT", `/api/songs/${id}/timings`, { lines }),
   resync: (id: string, artist: string, title: string) =>

@@ -162,6 +162,41 @@ export function restoreLine(src: EdLine[], original: EdLine[], i: number): EdLin
   return ls;
 }
 
+/**
+ * Riga riscritta (dall'elenco delle righe). Se le parole restano tante quante erano (un refuso)
+ * ognuna tiene i suoi tempi; altrimenti le parole si distribuiscono nello spazio della riga, in
+ * proporzione alla lunghezza. Le parole perdono il riferimento al testo salvato: la riga si salva
+ * come riscritta. Una riga svuotata viene eliminata.
+ */
+export function editLineText(src: EdLine[], i: number, text: string): EdLine[] {
+  const l = src[i];
+  if (!l) return clone(src);
+  const tokens = text.trim().split(/\s+/).filter(Boolean);
+  if (!tokens.length) return deleteLine(src, i);
+  if (tokens.join(" ") === l.words.map((w) => w.t).join(" ")) return clone(src);
+  const ls = clone(src);
+  const line = ls[i]!;
+  const start = line.words[0]?.s ?? line.start;
+  const end = Math.max(line.words[line.words.length - 1]?.e ?? line.end, start + 0.2 * tokens.length);
+  if (tokens.length === line.words.length) {
+    line.words = line.words.map((w, k) => ({ t: tokens[k]!, s: w.s, e: w.e }));
+  } else {
+    const weights = tokens.map((t) => t.length + 1);
+    const total = weights.reduce((a, b) => a + b, 0);
+    let t = start;
+    line.words = tokens.map((tok, k) => {
+      const d = ((end - start) * weights[k]!) / total;
+      const w = { t: tok, s: t, e: t + d };
+      t += d;
+      return w;
+    });
+  }
+  line.text = tokens.join(" ");
+  delete line.orig;
+  touch(line);
+  return ls;
+}
+
 /** Elimina una riga intera. */
 export function deleteLine(src: EdLine[], i: number): EdLine[] {
   const ls = clone(src);

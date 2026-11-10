@@ -173,6 +173,7 @@ class TimedWord(BaseModel):
 class TimedLine(BaseModel):
     words: list[TimedWord]
     manual: bool = False
+    edited: bool = False  # riga riscritta nell'editor: le parole sono nuove (senza `k`)
 
 
 class TimingsReq(BaseModel):

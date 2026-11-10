@@ -1659,13 +1659,16 @@ class TimingError(ValueError):
 
 
 def save_timings(song_dir: Path, new_lines: list[dict], duration: float = 0.0) -> int:
-    """Salva i tempi corretti a mano nell'editor (ed eventuali righe o parole eliminate).
+    """Salva i tempi corretti a mano nell'editor, con le righe o parole eliminate e le righe
+    riscritte.
 
     `new_lines`: per ogni riga {"words": [{"k", "t", "s", "e", "h"?}], "manual": bool}. `k` è la
     posizione della parola nel testo salvato (contando tutte le parole dall'inizio) e `t` il suo
-    testo: si possono solo togliere parole o righe intere, non aggiungerle, cambiarle o riordinarle.
-    Senza `k` le righe e le parole devono essere esattamente quelle salvate (solo i tempi cambiano).
-    Una riga da cui si tolgono parole diventa corretta a mano. Restituisce le righe corrette a mano.
+    testo: da una riga salvata si possono solo togliere parole, non aggiungerle o riordinarle.
+    Una riga riscritta nell'editor ha "edited": true e parole senza `k` ({"t", "s", "e"}): il suo
+    testo è quello delle parole. Senza nessun `k` (e nessuna riga riscritta) le righe e le parole
+    devono essere esattamente quelle salvate: cambiano solo i tempi. Le righe con parole tolte o
+    riscritte diventano corrette a mano. Restituisce le righe corrette a mano.
     """
     import json
     import math
@@ -1676,7 +1679,8 @@ def save_timings(song_dir: Path, new_lines: list[dict], duration: float = 0.0) -
     flat = [(li, wi) for li, l in enumerate(lines) for wi in range(len(l.get("words") or []))]
     changed = TimingError("Il testo è cambiato nel frattempo: riapri l'editor")
     new_lines = [{**n, "words": [dict(w) for w in n.get("words") or []]} for n in new_lines]  # non si toccano gli originali
-    if any(w.get("k") is None for n in new_lines for w in n.get("words") or []):
+    edited_any = any(n.get("edited") for n in new_lines)
+    if not edited_any and any(w.get("k") is None for n in new_lines for w in n.get("words") or []):
         # solo tempi: stesse righe, stesse parole
         if len(new_lines) != len(lines) or any(
             len(n.get("words") or []) != len(l.get("words") or []) for n, l in zip(new_lines, lines)
@@ -1694,6 +1698,25 @@ def save_timings(song_dir: Path, new_lines: list[dict], duration: float = 0.0) -
         words = n.get("words") or []
         if not words:
             continue
+        if n.get("edited"):  # riga riscritta nell'editor: testo e tempi sono quelli mandati
+            line = {"words": [], "manual": True}
+            for nw in words:
+                t = str(nw.get("t") or "").strip()
+                s, e = float(nw["s"]), float(nw["e"])
+                if not t or len(t) > 80 or any(c.isspace() for c in t):
+                    raise TimingError("Parola non valida in una riga modificata")
+                if not (math.isfinite(s) and math.isfinite(e)) or s < 0 or e > limit or e < s:
+                    raise TimingError(f"Tempi non validi alla parola «{t}»")
+                if s < prev - 0.01:
+                    raise TimingError(f"La parola «{t}» inizia prima di quella che la precede")
+                prev = s
+                line["words"].append({"t": t, "s": round(s, 3), "e": round(e, 3)})
+            line["text"] = " ".join(w["t"] for w in line["words"])
+            line["start"], line["end"] = line["words"][0]["s"], line["words"][-1]["e"]
+            out.append(line)
+            continue
+        if any(w.get("k") is None for w in words):
+            raise changed
         ks = [int(w["k"]) for w in words]
         if any(k <= last_k for k in ks) or ks != sorted(ks) or any(k >= len(flat) for k in ks):
             raise changed

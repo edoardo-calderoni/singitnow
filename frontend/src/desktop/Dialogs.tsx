@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Clock, FileText, Loader2, Search, X } from "lucide-react";
+import { Clock, Loader2, Search, X } from "lucide-react";
 import { Avatar } from "../shared/Avatar";
 import { api, LANGUAGES, SearchResult, Song } from "../shared/api";
 import { useImportNames } from "../shared/importNames";
@@ -110,7 +110,18 @@ export function SingerDialog({
  * Testo del brano corretto a mano: una riga per ogni riga del karaoke. Salvando, le parole
  * vengono risincronizzate con la voce (non serve scrivere i tempi).
  */
-export function LyricsDialog({ song, onClose, onToast }: { song: Song; onClose: () => void; onToast: (m: string) => void }) {
+export function LyricsDialog({
+  song,
+  onClose,
+  onToast,
+  onSaved,
+}: {
+  song: Song;
+  onClose: () => void;
+  onToast: (m: string) => void;
+  /** testo salvato (parte la risincronizzazione): chi l'ha aperta può chiudersi */
+  onSaved?: () => void;
+}) {
   const [text, setText] = useState<string | null>(null);
   const [original, setOriginal] = useState("");
   const [busy, setBusy] = useState(false);
@@ -130,7 +141,8 @@ export function LyricsDialog({ song, onClose, onToast }: { song: Song; onClose: 
     try {
       await api.setLyrics(song.id, text);
       onToast("Sincronizzo il testo corretto con la voce…");
-      onClose();
+      if (onSaved) onSaved();
+      else onClose();
     } catch (e: any) {
       onToast(e.message);
       setBusy(false);
@@ -141,7 +153,7 @@ export function LyricsDialog({ song, onClose, onToast }: { song: Song; onClose: 
     <div className="modal-back" onClick={onClose}>
       <div className="modal modal-lyrics" onClick={(e) => e.stopPropagation()}>
         <div className="modal-head">
-          <h3>Modifica testo</h3>
+          <h3>Testo intero</h3>
           <button type="button" className="icon-btn" title="Chiudi" onClick={onClose}>
             <X size={18} />
           </button>
@@ -185,13 +197,11 @@ export function EditDialog({
   song,
   onClose,
   onToast,
-  onEditLyrics,
   onEditTimings,
 }: {
   song: Song;
   onClose: () => void;
   onToast: (m: string) => void;
-  onEditLyrics: () => void;
   onEditTimings: () => void;
 }) {
   const [artist, setArtist] = useState(song.artist);
@@ -250,27 +260,19 @@ export function EditDialog({
         </label>
         <p className="muted" style={{ margin: 0, fontSize: 13 }}>
           Se il testo è sbagliato o mancante, correggi artista e titolo e rigenera: verrà cercato di nuovo online e
-          risincronizzato con la voce. Oppure correggilo tu con «Modifica testo»; se le parole si colorano fuori
-          tempo, sistemale con «Correggi i tempi».
+          risincronizzato con la voce. Oppure correggilo tu con «Modifica testo e tempi»: lì sistemi le righe, le
+          parole che si colorano fuori tempo, o riscrivi il testo intero.
         </p>
         {/* una sola riga: «Modifica testo» a sinistra, i salvataggi a destra */}
         <div className="actions">
           <button
             type="button"
-            className="btn btn-ghost edit-lyrics-btn"
-            disabled={busy || song.status !== "ready"}
-            onClick={onEditLyrics}
-          >
-            <FileText size={16} /> Modifica testo
-          </button>
-          <button
-            type="button"
             className="btn btn-ghost edit-timings-btn"
             disabled={busy || song.status !== "ready"}
             onClick={onEditTimings}
-            title="Correggi a mano quando si colorano le parole"
+            title="Correggi il testo e quando si colorano le parole"
           >
-            <Clock size={16} /> Correggi i tempi
+            <Clock size={16} /> Modifica testo e tempi
           </button>
           <button className="btn btn-ghost" disabled={busy} onClick={() => save(false)}>
             Salva

@@ -288,3 +288,38 @@ def test_la_riproduzione_si_segna_una_volta_per_avvio(pl, add_song):
     first = song.played_at
     pl.add("b", "Bruno")  # la coda cambia, ma «a» sta ancora suonando
     assert song.played_at == first
+
+
+def test_brano_gia_in_playlist_e_non_ancora_cantato_non_si_aggiunge(add_song):
+    """Gli utenti non rimettono in playlist un brano che c'è già e non è ancora stato riprodotto;
+    il PC sì. Quello che sta suonando si può richiedere di nuovo."""
+    from fastapi.testclient import TestClient
+
+    from singitnow import app as appmod
+    from singitnow.playlist import Entry
+
+    add_song("a")
+    add_song("b", status="downloading")
+    phone = TestClient(appmod.app, client=("192.168.1.20", 5000))
+    pc = TestClient(appmod.app, client=("127.0.0.1", 5000))
+    pl = appmod.playlist
+    saved = (list(pl._entries), pl.now_playing, dict(pl._waiting))
+    try:
+        pl._entries[:] = [Entry("e1", "a", "Marco")]
+        pl._waiting.clear()
+        pl._waiting["b"] = ["Bruno"]  # in preparazione: entrerà in playlist
+        for song in ("a", "b"):
+            r = phone.post("/api/playlist", json={"song_id": song, "singer": "Anna"})
+            assert r.status_code == 409
+            assert r.json()["detail"] == appmod.ALREADY_QUEUED
+        assert pc.post("/api/playlist", json={"song_id": "a", "singer": ""}).status_code == 200
+
+        pl._entries[:] = []
+        pl._waiting.clear()
+        pl.now_playing = Entry("e2", "a", "Marco")  # sta suonando: si può richiedere
+        assert pl.has_unplayed("a") is False
+        assert phone.post("/api/playlist", json={"song_id": "a", "singer": "Anna"}).status_code == 200
+    finally:
+        pl._entries[:], pl.now_playing = saved[0], saved[1]
+        pl._waiting.clear()
+        pl._waiting.update(saved[2])

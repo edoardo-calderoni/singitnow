@@ -288,6 +288,16 @@ def _check_one_at_a_time(request: Request, singer: str, token: str | None) -> No
         raise HTTPException(409, ONE_AT_A_TIME)
 
 
+ALREADY_QUEUED = "Questo brano è già in playlist e non è ancora stato cantato: scegline un altro"
+
+
+def _check_not_queued(request: Request, song_id: str, token: str | None) -> None:
+    """Gli utenti non aggiungono un brano già in playlist e non ancora riprodotto (PC e
+    amministratori sì: possono volerlo ripetere)."""
+    if not admin.can_control(request, token) and playlist.has_unplayed(song_id):
+        raise HTTPException(409, ALREADY_QUEUED)
+
+
 LOCKED = "Al momento non è possibile aggiungere brani alla playlist"
 
 
@@ -328,6 +338,7 @@ def import_guess(title: str = "", channel: str = ""):
 @app.post("/api/download")
 def download(req: DownloadReq, request: Request, x_admin_token: str | None = Header(default=None)):
     _check_unlocked(request, x_admin_token, req.singer)
+    _check_not_queued(request, req.youtube_id, x_admin_token)
     _check_one_at_a_time(request, req.singer, x_admin_token)
     _check_one_request(request, x_admin_token, req.singer)
     artist, name = req.artist.strip(), req.name.strip()
@@ -404,6 +415,7 @@ def queue_song(req: QueueReq, request: Request, x_admin_token: str | None = Head
     if not library.get(req.song_id):
         raise HTTPException(404, "Brano non in libreria")
     _check_unlocked(request, x_admin_token, req.singer)
+    _check_not_queued(request, req.song_id, x_admin_token)
     _check_one_at_a_time(request, req.singer, x_admin_token)
     _check_one_request(request, x_admin_token, req.singer)
     if req.singer.strip() and _needs_dj(request, x_admin_token, req.singer):

@@ -157,6 +157,12 @@ class Playlist:
                 n.strip().casefold() == k for names in self._waiting.values() for n in names
             )
 
+    def has_unplayed(self, song_id: str) -> bool:
+        """True se il brano è già in playlist e non è ancora stato riprodotto: in coda o ancora in
+        preparazione (quello che sta suonando non conta: finito, si può richiedere)."""
+        with self._lock:
+            return any(e.song_id == song_id for e in self._entries) or bool(self._waiting.get(song_id))
+
     def add(
         self, song_id: str, singer: str, autostart: bool = True, from_pc: bool = False, approved_by: str | None = None
     ) -> None:

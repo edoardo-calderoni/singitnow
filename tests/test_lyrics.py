@@ -486,3 +486,28 @@ def test_parole_di_una_riga_non_oltre_la_riga_dopo():
     assert fit_lines([a, b]) == 1
     assert 11.1 < a.words[1].start < 12.4
     assert a.words[1].end <= 12.4
+
+
+def test_tratto_agganciato_alla_ripetizione_sbagliata_passa_all_ordine():
+    """«Che cazzata»: con i tempi di LRCLIB l'intro era agganciata alle ripetizioni sbagliate, 2 s
+    prima; l'abbinamento per ordine la metteva dove Whisper la sente."""
+    from singitnow.lyrics import adopt_confirmed_lines
+
+    heard = sung(("Fabri", 6.5), ("Fibra", 7.3), ("Qua", 16.4), ("Qua", 18.4), ("Qua", 20.3), ("Questa", 31.8))
+
+    def mk(times):
+        out = []
+        for i, (t, w) in enumerate(zip(times, ("Fabri", "Fibra", "Qua", "Qua", "Qua", "Questa"))):
+            l = Line([Word(w, t, t + 0.5, run=2)])
+            l.pos = i
+            out.append(l)
+        return out
+
+    lrc = mk([2.3, 4.0, 14.7, 16.4, 18.4, 31.8])  # «Qua» sulla ripetizione prima
+    plain = mk([6.5, 7.3, 16.4, 18.4, 20.3, 31.8])
+    assert adopt_confirmed_lines(lrc, plain, heard) == 5
+    assert [l.words[0].start for l in lrc] == [6.5, 7.3, 16.4, 18.4, 20.3, 31.8]
+
+    # differenza piccola: si resta con LRCLIB
+    lrc = mk([2.3, 7.3, 16.4, 18.4, 18.9, 31.8])
+    assert adopt_confirmed_lines(lrc, plain, heard) == 0

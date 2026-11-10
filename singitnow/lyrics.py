@@ -697,6 +697,60 @@ def _anchor_to_lrc(lines: list[Line], sung: list[Word], duration: float = 0.0) -
     return out_lines, ratio
 
 
+def adopt_confirmed_lines(lines: list[Line], plain: list[Line], sung: list[Word]) -> int:
+    """Tratti dell'abbinamento con i tempi di LRCLIB rifatti con l'abbinamento per ordine, quando
+    quest'ultimo mette molte più righe dove Whisper le sente.
+
+    Con le righe ripetute («Qua dentro non si respira», «Incominciamo» in Che cazzata) i tempi di
+    LRCLIB di un'altra versione possono agganciare le righe alla ripetizione sbagliata: tutta l'intro
+    partiva 2 secondi prima del canto. L'abbinamento per ordine, nel complesso meno affidabile
+    (righe non cantate, video diversi), lì le metteva proprio dove Whisper le sente.
+
+    Riga per riga non si può decidere: una riga agganciata alla ripetizione sbagliata cade comunque
+    su una parola uguale. Si confrontano allora tratti interi, fra due righe che i due abbinamenti
+    mettono nello stesso punto: nel tratto vince l'abbinamento per ordine se ha almeno _ADOPT_MARGIN
+    righe in più con la prima parola sentita da Whisper lì (±0,5 s) e almeno una volta e mezza
+    quelle di LRCLIB. Restituisce le righe spostate.
+    """
+    said = _heard(sung)
+    by = {getattr(p, "pos", None): p for p in plain}
+
+    def heard_at(w: Word) -> bool:
+        return w.start >= 0 and said(w.text, w.start - 0.5, w.start + 0.5) is not None
+
+    pair = []
+    for l in lines:
+        p = by.get(getattr(l, "pos", None))
+        ok = p is not None and l.words and len(p.words) == len(l.words) and all(w.start >= 0 for w in p.words)
+        pair.append(p if ok else None)
+    # punti d'accordo: la stessa riga nello stesso posto (o una riga che si può prendere solo così)
+    agree = [
+        p is None or l.words[0].start < 0 or abs(p.words[0].start - l.words[0].start) < 0.3
+        for l, p in zip(lines, pair)
+    ]
+    moved, k, n = 0, 0, len(lines)
+    while k < n:
+        if agree[k]:
+            k += 1
+            continue
+        a = k
+        while k < n and not agree[k]:
+            k += 1
+        group = range(a, k)
+        mine = sum(heard_at(lines[g].words[0]) for g in group)
+        theirs = sum(heard_at(pair[g].words[0]) for g in group)
+        if theirs - mine < _ADOPT_MARGIN or theirs < 1.5 * mine:
+            continue
+        log.info(
+            "Righe %d-%d dall'abbinamento per ordine (%d confermate da Whisper invece di %d)", a + 1, k, theirs, mine
+        )
+        for g in group:
+            for w, q in zip(lines[g].words, pair[g].words):
+                w.start, w.end, w.run, w.onset = q.start, q.end, q.run, q.onset
+            lines[g].anchor = pair[g].words[0].start
+            moved += 1
+    return moved
+
 def uncrush_lines(lines: list[Line]) -> int:
     """Righe schiacciate in un istante tornano al loro tempo di LRCLIB.
 
@@ -804,6 +858,7 @@ def _interpolate(flat: list[Word], duration: float) -> None:
 
 _ALIGN_MAX = 26.0  # durata massima di una finestra (Whisper ne elabora al massimo 30 s)
 _PAD = 0.6  # margine di audio prima e dopo le righe di una finestra
+_ADOPT_MARGIN = 3  # righe confermate in più perché un tratto passi all'abbinamento per ordine
 _FORCE_DRIFT = 0.5  # s: spostamento oltre il quale la rifinitura contraddice una parola sentita da Whisper
 
 
@@ -1726,6 +1781,8 @@ def build(
             # delle parole, come per un testo scritto a mano, e si tiene l'abbinamento migliore.
             import copy
 
+            for i, l in enumerate(lines):
+                l.pos = i  # per ritrovare la stessa riga nei due abbinamenti
             plain = copy.deepcopy(lines)
             for l in plain:
                 l.lrc_time = None
@@ -1736,6 +1793,10 @@ def build(
             if placed_ratio(plain, sung) > placed_ratio(lines, sung) + 0.1:
                 log.info("Testo di LRCLIB con tempi di un'altra versione: seguo l'ordine delle parole")
                 lines, ratio = plain, ratio_plain
+            else:
+                n = adopt_confirmed_lines(lines, plain, sung)
+                if n:
+                    log.info("Righe prese dall'abbinamento per ordine (lì Whisper le sente): %d", n)
         else:
             ratio = align(lines, sung, duration)
         log.info("Allineamento testo: %.0f%% parole abbinate", ratio * 100)

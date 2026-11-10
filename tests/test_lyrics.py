@@ -189,6 +189,36 @@ def test_nota_tenuta_in_mezzo_alla_riga_si_colora_tutta():
     assert line.words[-1].end == pytest.approx(6.48, abs=0.05)
 
 
+def test_parola_sulla_coda_della_precedente_parte_dopo_il_silenzio():
+    """«…a girl, beautiful and sweet»: «beautiful» iniziava mentre si teneva ancora «girl» e si
+    colorava per tutto il silenzio prima dell'attacco vero."""
+    import numpy as np
+
+    from singitnow.lyrics import snap_to_voice
+
+    db = np.full(int(10 / _HOP), -60.0)
+    db[int(1.0 / _HOP) : int(3.0 / _HOP)] = -15.0  # giiirl tenuta
+    db[int(4.7 / _HOP) : int(6.0 / _HOP)] = -15.0  # beautiful and sweet
+    line = Line([Word("girl,", 1.0, 2.5), Word("beautiful", 2.5, 5.5), Word("and", 5.5, 6.0)])
+    snap_to_voice([line], (db, -40.0))
+    assert line.words[0].start == 1.0
+    assert line.words[1].start == pytest.approx(4.7, abs=0.05)
+
+
+def test_parola_senza_voce_si_colora_solo_alla_fine():
+    """«Well,» iniziava un secondo prima del cantante e finiva proprio quando lui attaccava."""
+    import numpy as np
+
+    from singitnow.lyrics import snap_to_voice
+
+    db = np.full(int(10 / _HOP), -60.0)
+    db[int(2.0 / _HOP) : int(4.0 / _HOP)] = -15.0
+    line = Line([Word("Well,", 1.0, 2.0), Word("I", 2.0, 2.3), Word("found", 2.3, 4.0)])
+    snap_to_voice([line], (db, -40.0))
+    assert line.words[0].start == pytest.approx(1.85, abs=0.05)
+    assert line.words[1].start == 2.0
+
+
 def test_allungare_due_volte_non_cambia_niente():
     import numpy as np
 

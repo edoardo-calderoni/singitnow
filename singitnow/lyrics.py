@@ -804,9 +804,11 @@ _HOP = 0.02  # risoluzione dell'inviluppo della voce (secondi)
 
 # se cambia, i testi già in libreria vengono riallineati alla voce all'avvio
 # (4: note tenute, fix_held_notes; 5: ogni parola tenuta si allunga, non solo l'ultima della riga;
-#  6: la nota tenuta finisce al primo stacco dopo le sillabe della parola)
-SNAP_VERSION = 6
+#  6: la nota tenuta finisce al primo stacco dopo le sillabe della parola;
+#  7: parole che partono sulla coda della parola prima, o in pieno silenzio)
+SNAP_VERSION = 7
 _PHRASE_RANGE = 15.0  # dB sotto il volume tipico della frase entro cui la voce conta come «cantato»
+_SNAP_GAP = 0.3  # s di silenzio vero dentro una parola: la voce prima era la coda della parola precedente
 
 
 def voice_activity(audio, sr: int = 16000):
@@ -832,6 +834,12 @@ def snap_to_voice(lines: list[Line], voice) -> int:
     così si colora in anticipo. Per ogni riga si misura il volume tipico del cantato; se una parola
     inizia dove la voce è molto più bassa (silenzio, respiro, rumore di fondo), il suo inizio si
     sposta al primo istante in cui la voce arriva al livello della frase. Restituisce le parole corrette.
+
+    Altri due casi in cui la parola partiva in anticipo («Well, I found a girl, beautiful…»):
+    - la parola inizia sulla coda della parola prima, ancora tenuta, poi c'è silenzio vero e solo
+      dopo il cantante attacca: la voce all'inizio non è sua, la parola parte dall'attacco;
+    - nella parola non c'è voce per niente (il cantante attacca appena dopo la sua fine): si
+      colora solo nell'ultimo istante, non per tutto il silenzio che la precede.
     """
     import numpy as np
 
@@ -839,6 +847,7 @@ def snap_to_voice(lines: list[Line], voice) -> int:
     fixed = 0
     probe = int(0.1 / _HOP)  # la voce deve attaccare entro 100 ms dall'inizio della parola…
     hold = int(0.12 / _HOP)  # …e restare sopra il livello per almeno 120 ms (un respiro o un click no)
+    gap = int(_SNAP_GAP / _HOP)
     for l in lines:
         if not l.words:
             continue
@@ -855,10 +864,33 @@ def snap_to_voice(lines: list[Line], voice) -> int:
             # sustained[i]: voce sopra il livello per tutti i `hold` blocchi da i in poi
             run = np.convolve(above.astype(int), np.ones(hold, dtype=int), mode="valid") == hold
             on = np.flatnonzero(run[: b - a])
-            if on.size and on[0] < probe:
-                continue  # la parola attacca già con la voce
-            if on.size:
+            if not on.size:
+                # nessuna voce nella parola (al massimo l'attacco proprio in fondo): il cantante
+                # attacca dopo, si colora solo alla fine
+                voiced = np.flatnonzero(db[a:b] > song_thr)
+                first = voiced[0] if voiced.size else b - a
+                if first >= probe and b - a > probe + 5:
+                    w.start = max(w.start, min((a + first) * _HOP, w.end - 0.15))
+                    fixed += 1
+                continue
+            if on[0] >= probe:
                 w.start = min((a + on[0]) * _HOP, w.end - 0.08)
+                fixed += 1
+                continue
+            # la parola attacca sulla voce: ma se quella voce viene da prima della parola (coda della
+            # parola precedente) ed è seguita da silenzio vero, la parola comincia dopo il silenzio
+            if a < 3 or not np.all(db[a - 3 : a] > thr):
+                continue
+            quiet = db[a:b] <= song_thr
+            k = int(np.argmax(quiet)) if quiet.any() else -1
+            if k < 0:
+                continue
+            q = int(np.argmax(~quiet[k:])) if (~quiet[k:]).any() else len(quiet) - k
+            if q < gap:
+                continue
+            after = np.flatnonzero(run[k + q : b - a])
+            if after.size:
+                w.start = min((a + k + q + after[0]) * _HOP, w.end - 0.08)
                 fixed += 1
     return fixed
 

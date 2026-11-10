@@ -323,3 +323,17 @@ def test_brano_gia_in_playlist_e_non_ancora_cantato_non_si_aggiunge(add_song):
         pl._entries[:], pl.now_playing = saved[0], saved[1]
         pl._waiting.clear()
         pl._waiting.update(saved[2])
+
+
+def test_ip_per_il_qr_ignora_la_vpn():
+    from singitnow.config import _gateway_ip
+
+    table = """
+Route attive:
+     Indirizzo rete             Mask          Gateway     Interfaccia Metrica
+          0.0.0.0          0.0.0.0    192.168.1.254      192.168.1.2     20
+          0.0.0.0        128.0.0.0         On-link    100.87.191.224      5
+      172.21.48.0    255.255.240.0         On-link       172.21.48.1   5256
+"""
+    assert _gateway_ip(table) == "192.168.1.2"
+    assert _gateway_ip("          0.0.0.0          0.0.0.0         On-link    100.87.191.224      5\n") is None

@@ -5,8 +5,13 @@ Tutti i valori possono essere sovrascritti con variabili d'ambiente SINGITNOW_*.
 
 from __future__ import annotations
 
+import ipaddress
 import os
+import re
 import socket
+import subprocess
+import sys
+import time
 from pathlib import Path
 
 ROOT_DIR = Path(__file__).resolve().parent.parent
@@ -41,14 +46,55 @@ def ensure_dirs() -> None:
         d.mkdir(parents=True, exist_ok=True)
 
 
+_DEFAULT_ROUTE = re.compile(
+    r"^\s*0\.0\.0\.0\s+0\.0\.0\.0\s+(\d+\.\d+\.\d+\.\d+)\s+(\d+\.\d+\.\d+\.\d+)\s+(\d+)\s*$", re.M
+)
+_lan_cache: tuple[float, str] = (0.0, "")
+
+
+def _gateway_ip(route_table: str) -> str | None:
+    """Dalla tabella di `route print -4`: l'IP del PC sull'interfaccia del gateway di casa (rotta
+    predefinita con un gateway vero, la metrica più bassa). Le VPN (es. ESET, Tailscale) instradano
+    tutto con rotte «On-link» senza gateway, e le schede virtuali (VMware, Hyper-V) non ne hanno:
+    così non finiscono nel QR code, dove il telefono non le raggiungerebbe."""
+    best = None
+    for gw, ip, metric in _DEFAULT_ROUTE.findall(route_table):
+        try:
+            addr = ipaddress.ip_address(ip)
+        except ValueError:
+            continue
+        if not addr.is_private or addr.is_loopback or addr.is_link_local:
+            continue
+        if best is None or int(metric) < best[0]:
+            best = (int(metric), ip)
+    return best[1] if best else None
+
+
 def lan_ip() -> str:
     """IP del PC sulla rete locale (quello che i telefoni useranno per collegarsi)."""
-    s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-    try:
-        # Nessun pacchetto viene inviato: serve solo a scegliere l'interfaccia di uscita.
-        s.connect(("10.255.255.255", 1))
-        return s.getsockname()[0]
-    except OSError:
-        return "127.0.0.1"
-    finally:
-        s.close()
+    global _lan_cache
+    now = time.monotonic()
+    if _lan_cache[1] and now - _lan_cache[0] < 30:
+        return _lan_cache[1]
+    ip = None
+    if sys.platform == "win32":
+        try:
+            table = subprocess.run(
+                ["route", "print", "-4"], capture_output=True, text=True, timeout=3,
+                creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+            ).stdout
+            ip = _gateway_ip(table)
+        except (OSError, subprocess.SubprocessError):
+            ip = None
+    if not ip:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        try:
+            # Nessun pacchetto viene inviato: serve solo a scegliere l'interfaccia di uscita.
+            s.connect(("10.255.255.255", 1))
+            ip = s.getsockname()[0]
+        except OSError:
+            ip = "127.0.0.1"
+        finally:
+            s.close()
+    _lan_cache = (now, ip)
+    return ip

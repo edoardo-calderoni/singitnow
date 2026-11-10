@@ -589,3 +589,26 @@ def test_righe_corrette_a_mano_non_si_toccano_nella_ricorrezione(tmp_path):
     out = json.loads((tmp_path / "lyrics.json").read_text(encoding="utf-8"))
     assert [(w["s"], w["e"]) for w in out["lines"][0]["words"]] == [(1.0, 1.5), (1.5, 2.0)]
     assert out["lines"][0]["manual"] is True
+
+
+def test_righe_e_parole_eliminate_nell_editor(tmp_path):
+    import json
+
+    from singitnow.lyrics import TimingError, save_timings
+
+    _saved_song(tmp_path)  # «uno due» (parole 0, 1) e «tre» (parola 2)
+    # via «uno» dalla prima riga, via la seconda riga
+    assert save_timings(tmp_path, [{"words": [{"k": 1, "t": "due", "s": 1.5, "e": 2.0}]}], 200) == 1
+    data = json.loads((tmp_path / "lyrics.json").read_text(encoding="utf-8"))
+    assert [l["text"] for l in data["lines"]] == ["due"]
+    assert data["lines"][0]["manual"] is True and data["lines"][0]["start"] == 1.5
+
+    _saved_song(tmp_path)
+    for bad in (
+        [{"words": [{"k": 1, "t": "due", "s": 1.5, "e": 2}, {"k": 0, "t": "uno", "s": 1.6, "e": 2}]}],  # riordinate
+        [{"words": [{"k": 1, "t": "DUE", "s": 1.5, "e": 2}]}],  # testo diverso
+        [{"words": [{"k": 1, "t": "due", "s": 1.5, "e": 2}, {"k": 2, "t": "tre", "s": 3, "e": 4}]}],  # righe unite
+        [{"words": []}],  # tutto vuoto
+    ):
+        with pytest.raises(TimingError):
+            save_timings(tmp_path, bad, 200)

@@ -166,6 +166,8 @@ class TimedWord(BaseModel):
     s: float
     e: float
     h: float | None = None
+    k: int | None = None  # posizione della parola nel testo salvato (per le parole eliminate)
+    t: str | None = None
 
 
 class TimedLine(BaseModel):

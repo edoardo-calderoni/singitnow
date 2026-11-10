@@ -1,9 +1,22 @@
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { MouseEvent as RMouseEvent, PointerEvent as RPointerEvent, ReactElement, WheelEvent as RWheelEvent } from "react";
-import { Check, Hand, Loader2, Mic, Music, Pause, Play, RotateCcw, Undo2, ZoomIn, ZoomOut } from "lucide-react";
+import { Check, Hand, Loader2, Mic, Music, Pause, Play, RotateCcw, Trash2, Undo2, ZoomIn, ZoomOut } from "lucide-react";
 import { api, Song } from "../shared/api";
 import { activeIndex, switchTimes, wordFill } from "../shared/lyrics";
-import { clone, EdLine, moveWord, restoreLine, setWord, shiftFrom, shiftLine, tapLine, tapWord } from "./timing";
+import {
+  clone,
+  deleteLine,
+  deleteWord,
+  EdLine,
+  moveWord,
+  restoreLine,
+  setWord,
+  shiftFrom,
+  shiftLine,
+  tapLine,
+  tapWord,
+  withIds,
+} from "./timing";
 
 /** Tempo con i decimi: 1:05.3 */
 function fmt(t: number): string {
@@ -23,6 +36,8 @@ type Drag = {
 };
 type Tap = "off" | "lines" | "words";
 type Sel = { i: number; j: number | null };
+/** menu del tasto destro: su una riga (elenco o barra viola) o su una parola */
+type Menu = { x: number; y: number; i: number; j: number | null };
 
 const RATES = [1, 0.75, 0.5];
 const LANE_LINE = 22; // altezza della corsia delle righe
@@ -52,6 +67,7 @@ export function TimingEditor({ song, onClose, onToast }: { song: Song; onClose: 
   const [tapAt, setTapAt] = useState<{ i: number; j: number }>({ i: 0, j: 0 });
   const [busy, setBusy] = useState(false);
   const [view, setView] = useState({ left: 0, width: 1000 });
+  const [menu, setMenu] = useState<Menu | null>(null);
 
   const voiceRef = useRef<HTMLAudioElement>(null);
   const songRef = useRef<HTMLAudioElement>(null);
@@ -64,7 +80,7 @@ export function TimingEditor({ song, onClose, onToast }: { song: Song; onClose: 
     api
       .lyrics(song.id)
       .then((l) => {
-        const ls = l.lines as EdLine[];
+        const ls = withIds(l.lines);
         setLines(clone(ls));
         setOriginal(clone(ls));
       })
@@ -214,7 +230,10 @@ export function TimingEditor({ song, onClose, onToast }: { song: Song; onClose: 
     try {
       await api.setTimings(
         song.id,
-        lines.map((l) => ({ manual: !!l.manual, words: l.words.map((w) => ({ s: w.s, e: w.e, h: w.h ?? null })) })),
+        lines.map((l) => ({
+          manual: !!l.manual,
+          words: l.words.map((w) => ({ k: w.k, t: w.t, s: w.s, e: w.e, h: w.h ?? null })),
+        })),
       );
       onToast("Tempi del testo salvati");
       for (const m of media()) m.pause();
@@ -245,12 +264,39 @@ export function TimingEditor({ song, onClose, onToast }: { song: Song; onClose: 
         if (e.shiftKey && lines) commit(shiftLine(lines, sel.i, dir * 0.1));
         else seek((voiceRef.current?.currentTime ?? t) + dir * 2);
       } else if (e.key === "Escape") {
-        close();
+        if (menu) setMenu(null);
+        else close();
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [toggle, doTap, undo, seek, t, lines, sel, commit, close]);
+  }, [toggle, doTap, undo, seek, t, lines, sel, commit, close, menu]);
+
+  // --------------------------------------------------------------- menu del tasto destro: «Elimina»
+  const openMenu = useCallback((e: RMouseEvent, i: number, j: number | null) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setSel({ i, j });
+    setMenu({ x: e.clientX, y: e.clientY, i, j });
+  }, []);
+  const remove = () => {
+    if (!lines || !menu) return;
+    const { i, j } = menu;
+    setMenu(null);
+    const next = j === null ? deleteLine(lines, i) : deleteWord(lines, i, j);
+    if (!next.length) {
+      onToast("Il testo non può restare vuoto");
+      return;
+    }
+    commit(next);
+    setSel({ i: Math.min(i, next.length - 1), j: null });
+    // la prossima riga da segnare al volo resta la stessa riga di testo
+    setTapAt((p) => {
+      const gone = next.length < lines.length; // sparita una riga intera
+      const ni = gone && p.i > i ? p.i - 1 : p.i;
+      return { i: Math.max(0, Math.min(ni, next.length - 1)), j: p.i === i ? 0 : p.j };
+    });
+  };
 
   // --------------------------------------------------------------- trascinamento sulla linea del tempo
   const onDown = (e: RPointerEvent, kind: Drag["kind"], i: number, j: number) => {
@@ -422,6 +468,7 @@ export function TimingEditor({ song, onClose, onToast }: { song: Song; onClose: 
           onShift={(d) => commit(shiftLine(lines, sel.i, d))}
           onShiftFrom={(d) => commit(shiftFrom(lines, sel.i, d))}
           onRestore={() => commit(restoreLine(lines, original, sel.i))}
+          onMenu={openMenu}
         />
       </div>
 
@@ -438,11 +485,32 @@ export function TimingEditor({ song, onClose, onToast }: { song: Song; onClose: 
           <div className="te-canvas" style={{ width }} onClick={onTimelineClick}>
             <Ruler t0={Math.max(0, t0)} t1={t1} zoom={zoom} />
             <Wave env={env} zoom={zoom} total={total} />
-            <Lanes lines={lines} zoom={zoom} t0={t0} t1={t1} sel={sel} onDown={onDown} />
+            <Lanes lines={lines} zoom={zoom} t0={t0} t1={t1} sel={sel} onDown={onDown} onMenu={openMenu} />
             <div className="te-playhead" style={{ transform: `translateX(${t * zoom}px)` }} />
           </div>
         </div>
       </div>
+
+      {menu && (
+        <div
+          className="te-menu-back"
+          onPointerDown={() => setMenu(null)}
+          onContextMenu={(e) => {
+            e.preventDefault();
+            setMenu(null);
+          }}
+        >
+          <div
+            className="te-menu"
+            style={{ left: Math.min(menu.x, window.innerWidth - 200), top: Math.min(menu.y, window.innerHeight - 60) }}
+            onPointerDown={(e) => e.stopPropagation()}
+          >
+            <button onClick={remove}>
+              <Trash2 size={15} /> Elimina
+            </button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -478,6 +546,7 @@ const LineList = memo(function LineList({
   onShift,
   onShiftFrom,
   onRestore,
+  onMenu,
 }: {
   lines: EdLine[];
   sel: number;
@@ -485,6 +554,7 @@ const LineList = memo(function LineList({
   onShift: (d: number) => void;
   onShiftFrom: (d: number) => void;
   onRestore: () => void;
+  onMenu: (e: RMouseEvent, i: number, j: number | null) => void;
 }) {
   const selRef = useRef<HTMLButtonElement>(null);
   useEffect(() => {
@@ -524,7 +594,13 @@ const LineList = memo(function LineList({
       </div>
       <div className="te-list">
         {lines.map((l, i) => (
-          <button key={i} ref={i === sel ? selRef : undefined} className={`te-item ${i === sel ? "sel" : ""}`} onClick={() => onSelect(i)}>
+          <button
+            key={l.id ?? i}
+            ref={i === sel ? selRef : undefined}
+            className={`te-item ${i === sel ? "sel" : ""}`}
+            onClick={() => onSelect(i)}
+            onContextMenu={(e) => onMenu(e, i, null)}
+          >
             <span className="te-item-time">{fmt(l.words[0]?.s ?? l.start)}</span>
             <span className="te-item-text">{l.text}</span>
             {l.manual && <span className="te-badge" title="Corretta a mano: le correzioni automatiche non la toccano">a mano</span>}
@@ -574,6 +650,7 @@ const Lanes = memo(function Lanes({
   t1,
   sel,
   onDown,
+  onMenu,
 }: {
   lines: EdLine[];
   zoom: number;
@@ -581,6 +658,7 @@ const Lanes = memo(function Lanes({
   t1: number;
   sel: Sel;
   onDown: (e: RPointerEvent, kind: Drag["kind"], i: number, j: number) => void;
+  onMenu: (e: RMouseEvent, i: number, j: number | null) => void;
 }) {
   const out: ReactElement[] = [];
   lines.forEach((l, i) => {
@@ -594,8 +672,9 @@ const Lanes = memo(function Lanes({
         key={`l${i}`}
         className={`te-lbar ${cls}`}
         style={{ left: s * zoom, width: Math.max(4, (e - s) * zoom) }}
-        onPointerDown={(ev) => onDown(ev, "line", i, 0)}
+        onPointerDown={(ev) => ev.button === 0 && onDown(ev, "line", i, 0)}
         onClick={(ev) => ev.stopPropagation()}
+        onContextMenu={(ev) => onMenu(ev, i, null)}
         title={`Riga ${i + 1}: trascina per spostarla tutta`}
       >
         <span>{i + 1}</span>
@@ -609,12 +688,13 @@ const Lanes = memo(function Lanes({
           key={`w${i}.${j}`}
           className={`te-word ${cls} ${on ? "on" : ""}`}
           style={{ left: w.s * zoom, width: Math.max(3, (w.e - w.s) * zoom) }}
-          onPointerDown={(ev) => onDown(ev, "word", i, j)}
+          onPointerDown={(ev) => ev.button === 0 && onDown(ev, "word", i, j)}
           onClick={(ev) => ev.stopPropagation()}
+          onContextMenu={(ev) => onMenu(ev, i, j)}
         >
-          <div className="te-handle l" onPointerDown={(ev) => onDown(ev, "start", i, j)} title="Inizio della parola" />
+          <div className="te-handle l" onPointerDown={(ev) => ev.button === 0 && onDown(ev, "start", i, j)} title="Inizio della parola" />
           <span>{w.t}</span>
-          <div className="te-handle r" onPointerDown={(ev) => onDown(ev, "end", i, j)} title="Fine della parola" />
+          <div className="te-handle r" onPointerDown={(ev) => ev.button === 0 && onDown(ev, "end", i, j)} title="Fine della parola" />
         </div>,
       );
     });

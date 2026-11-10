@@ -4251,3 +4251,37 @@ body {
   box-shadow: 0 0 6px rgba(255, 210, 63, 0.8);
   pointer-events: none;
 }
+
+.te-menu-back {
+  position: fixed;
+  inset: 0;
+  z-index: 95;
+}
+.te-menu {
+  position: fixed;
+  min-width: 160px;
+  padding: 4px;
+  border-radius: 10px;
+  background: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  box-shadow: var(--shadow);
+}
+.te-menu button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 12px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--red);
+  font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+.te-menu button:hover {
+  background: rgba(248, 113, 113, 0.14);
+}

@@ -3,9 +3,18 @@
  * le righe corrette (le righe toccate diventano «corrette a mano»). Mai una parola che inizia prima
  * della precedente, mai una parola più corta di MIN.
  */
-import type { LyricLine } from "../shared/api";
+import type { LyricLine, LyricWord } from "../shared/api";
 
-export type EdLine = LyricLine & { manual?: boolean };
+/** k: posizione della parola nel testo salvato (serve a salvare le parole eliminate) */
+export type EdWord = LyricWord & { k?: number };
+/** id: posizione della riga nel testo salvato (per rimetterla com'era anche dopo eliminazioni) */
+export type EdLine = Omit<LyricLine, "words"> & { manual?: boolean; id?: number; words: EdWord[] };
+
+/** Righe caricate nell'editor: ogni riga e ogni parola si porta dietro la sua posizione originale. */
+export function withIds(lines: LyricLine[]): EdLine[] {
+  let k = 0;
+  return lines.map((l, id) => ({ ...l, id, words: l.words.map((w) => ({ ...w, k: k++ })) }));
+}
 
 export const MIN = 0.05; // s: durata minima di una parola
 
@@ -145,10 +154,33 @@ export function tapWord(src: EdLine[], i: number, j: number, t: number): EdLine[
   return ls;
 }
 
-/** Riga riportata ai tempi di partenza (quelli caricati all'apertura dell'editor). */
+/** Riga riportata com'era all'apertura dell'editor (parole eliminate comprese). */
 export function restoreLine(src: EdLine[], original: EdLine[], i: number): EdLine[] {
   const ls = clone(src);
-  const o = original[i];
+  const o = original.find((x) => x.id === ls[i]?.id);
   if (o) ls[i] = { ...o, words: o.words.map((w) => ({ ...w })) };
+  return ls;
+}
+
+/** Elimina una riga intera. */
+export function deleteLine(src: EdLine[], i: number): EdLine[] {
+  const ls = clone(src);
+  ls.splice(i, 1);
+  return ls;
+}
+
+/** Elimina una parola (se la riga resta vuota, sparisce anche la riga). */
+export function deleteWord(src: EdLine[], i: number, j: number): EdLine[] {
+  const ls = clone(src);
+  const l = ls[i];
+  if (!l) return ls;
+  l.words.splice(j, 1);
+  if (!l.words.length) {
+    ls.splice(i, 1);
+    return ls;
+  }
+  l.text = l.words.map((w) => w.t).join(" ");
+  if (l.orig !== undefined) l.orig = l.words.map((w) => w.o ?? w.t).join("");
+  touch(l);
   return ls;
 }

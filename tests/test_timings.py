@@ -25,4 +25,6 @@ def test_api_tempi_solo_dal_pc(add_song):
     assert saved["manual"] and saved["words"][0]["s"] == 1.1
 
     r = pc.put("/api/songs/a/timings", json={"lines": []})
+    assert r.status_code == 400 and "vuoto" in r.json()["detail"]
+    r = pc.put("/api/songs/a/timings", json={"lines": [{"words": [{"s": 1, "e": 2}]}]})  # parole che mancano
     assert r.status_code == 400 and "riapri" in r.json()["detail"]

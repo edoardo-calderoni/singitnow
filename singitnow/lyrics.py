@@ -1659,24 +1659,56 @@ class TimingError(ValueError):
 
 
 def save_timings(song_dir: Path, new_lines: list[dict], duration: float = 0.0) -> int:
-    """Salva i tempi corretti a mano nell'editor: il testo resta quello salvato, cambiano solo inizio
-    e fine delle parole. `new_lines`: per ogni riga {"words": [{"s", "e", "h"?}], "manual": bool}, nello
-    stesso numero e ordine delle righe e delle parole salvate. Restituisce le righe corrette a mano."""
+    """Salva i tempi corretti a mano nell'editor (ed eventuali righe o parole eliminate).
+
+    `new_lines`: per ogni riga {"words": [{"k", "t", "s", "e", "h"?}], "manual": bool}. `k` è la
+    posizione della parola nel testo salvato (contando tutte le parole dall'inizio) e `t` il suo
+    testo: si possono solo togliere parole o righe intere, non aggiungerle, cambiarle o riordinarle.
+    Senza `k` le righe e le parole devono essere esattamente quelle salvate (solo i tempi cambiano).
+    Una riga da cui si tolgono parole diventa corretta a mano. Restituisce le righe corrette a mano.
+    """
     import json
     import math
 
     path = song_dir / "lyrics.json"
     data = json.loads(path.read_text(encoding="utf-8"))
     lines = data.get("lines") or []
-    if len(new_lines) != len(lines):
-        raise TimingError("Il testo è cambiato nel frattempo: riapri l'editor")
+    flat = [(li, wi) for li, l in enumerate(lines) for wi in range(len(l.get("words") or []))]
+    changed = TimingError("Il testo è cambiato nel frattempo: riapri l'editor")
+    new_lines = [{**n, "words": [dict(w) for w in n.get("words") or []]} for n in new_lines]  # non si toccano gli originali
+    if any(w.get("k") is None for n in new_lines for w in n.get("words") or []):
+        # solo tempi: stesse righe, stesse parole
+        if len(new_lines) != len(lines) or any(
+            len(n.get("words") or []) != len(l.get("words") or []) for n, l in zip(new_lines, lines)
+        ):
+            raise changed
+        k = 0
+        for n in new_lines:
+            for w in n.get("words") or []:
+                w["k"] = k
+                k += 1
     limit = (duration or 0) + 5 if duration else math.inf
-    prev = -math.inf
-    for l, n in zip(lines, new_lines):
+    prev, last_k, used = -math.inf, -1, set()
+    out = []
+    for n in new_lines:
         words = n.get("words") or []
-        if len(words) != len(l.get("words") or []):
-            raise TimingError("Il testo è cambiato nel frattempo: riapri l'editor")
-        for w, nw in zip(l["words"], words):
+        if not words:
+            continue
+        ks = [int(w["k"]) for w in words]
+        if any(k <= last_k for k in ks) or ks != sorted(ks) or any(k >= len(flat) for k in ks):
+            raise changed
+        li = flat[ks[0]][0]
+        if any(flat[k][0] != li for k in ks) or li in used:
+            raise changed  # le parole di una riga vengono tutte da quella riga, una volta sola
+        used.add(li)
+        last_k = ks[-1]
+        old = lines[li]
+        line = {k: v for k, v in old.items() if k not in ("words", "manual")}
+        line["words"] = []
+        for nw, k in zip(words, ks):
+            w = dict(old["words"][flat[k][1]])
+            if nw.get("t") is not None and nw["t"] != w["t"]:
+                raise changed
             s, e = float(nw["s"]), float(nw["e"])
             if not (math.isfinite(s) and math.isfinite(e)) or s < 0 or e > limit or e < s:
                 raise TimingError(f"Tempi non validi alla parola «{w['t']}»")
@@ -1689,15 +1721,21 @@ def save_timings(song_dir: Path, new_lines: list[dict], duration: float = 0.0) -
                 w["h"] = round(float(h), 3)
             else:
                 w.pop("h", None)
-        if l.get("words"):
-            l["start"], l["end"] = l["words"][0]["s"], l["words"][-1]["e"]
-        if n.get("manual"):
-            l["manual"] = True
-        else:
-            l.pop("manual", None)
+            line["words"].append(w)
+        trimmed = len(line["words"]) != len(old["words"])
+        if trimmed:  # parole eliminate: il testo della riga è quello che resta
+            line["text"] = " ".join(w["t"] for w in line["words"])
+            if "orig" in line:
+                line["orig"] = "".join(w.get("o") or w["t"] for w in line["words"])
+        line["start"], line["end"] = line["words"][0]["s"], line["words"][-1]["e"]
+        if n.get("manual") or trimmed:
+            line["manual"] = True
+        out.append(line)
+    if not out:
+        raise TimingError("Il testo non può restare vuoto")
+    data["lines"] = out
     path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
-    return sum(1 for l in lines if l.get("manual"))
-
+    return sum(1 for l in out if l.get("manual"))
 
 def carry_manual(old: dict | None, new: dict) -> int:
     """Testo rigenerato (risincronizzazione, «Ripara i testi», testo modificato): le righe corrette a

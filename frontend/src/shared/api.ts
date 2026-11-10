@@ -100,6 +100,8 @@ export interface LyricWord {
   e: number;
   /** istante in cui la parola è pronunciata e comincia la nota tenuta (se c'è) */
   h?: number;
+  /** testo originale (giapponese) quando `t` è il romaji */
+  o?: string;
 }
 export interface LyricLine {
   start: number;
@@ -320,7 +322,10 @@ export const api = {
   /** Andamento della voce isolata (0..100 ogni `hop` secondi), per l'editor dei tempi. */
   voiceEnvelope: (id: string) => req<{ hop: number; env: number[] }>("GET", `/api/songs/${id}/voice`),
   /** Tempi delle parole corretti a mano (stesse righe e parole del testo salvato). */
-  setTimings: (id: string, lines: { manual: boolean; words: { s: number; e: number; h: number | null }[] }[]) =>
+  setTimings: (
+    id: string,
+    lines: { manual: boolean; words: { k?: number; t?: string; s: number; e: number; h: number | null }[] }[],
+  ) =>
     req<{ ok: boolean; manual: number }>("PUT", `/api/songs/${id}/timings`, { lines }),
   resync: (id: string, artist: string, title: string) =>
     req("POST", `/api/songs/${id}/lyrics/resync`, { artist, title }),

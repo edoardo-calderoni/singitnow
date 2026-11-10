@@ -29,7 +29,7 @@ body {
 
 /* ------------------------------------------------------------- sidebar */
 .sidebar {
-  width: 270px;
+  width: 310px; /* 270 + 15% */
   display: flex;
   flex-direction: column;
   gap: 6px;
@@ -422,7 +422,7 @@ body {
 
 /* ------------------------------------------------------------- playlist */
 .queue {
-  width: 380px;
+  width: 437px; /* 380 + 15% */
   display: flex;
   flex-direction: column;
   gap: 16px;
@@ -1045,10 +1045,10 @@ body {
 /* ------------------------------------------------------------- schermi stretti */
 @media (max-width: 1250px) {
   .queue {
-    width: 320px;
+    width: 368px; /* 320 + 15% */
   }
   .sidebar {
-    width: 230px;
+    width: 265px; /* 230 + 15% */
   }
   .song-cover {
     width: 84px;

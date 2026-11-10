@@ -852,8 +852,9 @@ _HOP = 0.02  # risoluzione dell'inviluppo della voce (secondi)
 #  7: parole che partono sulla coda della parola prima, o in pieno silenzio;
 #  8: via le introduzioni parlate o di sottofondo, drop_intro;
 #  9: la prima parola di una riga parte quando il cantante attacca davvero, anche se prima;
-# 10: la nota tenuta non si allunga sulla coda della voce, e il colore la segue a parte: `hold`)
-SNAP_VERSION = 10
+# 10: la nota tenuta non si allunga sulla coda della voce, e il colore la segue a parte: `hold`;
+# 11: la prima parola non confermata parte quando la voce arriva al volume del canto: late_line_starts)
+SNAP_VERSION = 11
 _PHRASE_RANGE = 15.0  # dB sotto il volume tipico della frase entro cui la voce conta come «cantato»
 _SNAP_GAP = 0.3  # s di silenzio vero dentro una parola: la voce prima era la coda della parola precedente
 _EARLY_MAX = 3.0  # s: di quanto al massimo la prima parola di una riga può anticipare per seguire la voce
@@ -1002,6 +1003,68 @@ def early_line_starts(lines: list[Line], voice, sung: list[Word]) -> int:
                 first.start = onset * _HOP
                 fixed += 1
         prev_end = l.words[-1].end
+    return fixed
+
+
+_SUNG_RANGE = 8.0  # dB sotto il volume della riga: da qui in su è il cantante, non residui degli strumenti
+
+
+def late_line_starts(lines: list[Line], voice, sung: list[Word]) -> int:
+    """La prima parola di una riga non parte sui residui degli strumenti.
+
+    Quando Whisper non riconosce la prima parola (in «Ti pretendo» sente «Sto a notte» invece di
+    «Stanotte») il suo inizio viene solo dal tempo di LRCLIB, che può essere secondi prima del
+    canto. snap_to_voice non lo corregge se nella traccia della voce restano gli strumenti: sono
+    abbastanza forti da sembrare voce, e la parola si colorava 3 secondi prima.
+
+    Se nessuna parola sentita da Whisper conferma l'inizio della riga, la prima parola parte da dove
+    la voce arriva davvero al volume del cantato della riga (al massimo _SUNG_RANGE dB sotto), ma
+    solo se lì Whisper ha sentito qualcosa: due indizi indipendenti. Un attacco cantato piano, che
+    Whisper riconosce, non si tocca. Restituisce le righe corrette.
+    """
+    import bisect
+
+    import numpy as np
+
+    db, _ = voice
+    heard = sorted(w.start for w in sung if w.start >= 0 and _norm(w.text))
+    said = _heard(sung)
+    hold = int(0.12 / _HOP)
+    fixed = 0
+
+    def near(t: float, lo: float, hi: float) -> list[float]:
+        return heard[bisect.bisect_left(heard, t + lo) : bisect.bisect_right(heard, t + hi)]
+
+    for l in lines:
+        if not l.words or l.words[0].start < 0:
+            continue
+        first = l.words[0]
+        if near(first.start, -0.5, 0.5):
+            continue  # inizio confermato da Whisper
+        la, lb = int(first.start / _HOP), int(l.words[-1].end / _HOP)
+        fb = int(first.end / _HOP)
+        if lb - la < 10 or fb - la < 10 or lb > len(db):
+            continue
+        # volume del canto dal resto della riga: la prima parola, se è in anticipo, contiene gli
+        # strumenti che abbasserebbero la misura
+        phrase = float(np.percentile(db[fb:lb] if lb - fb >= 10 else db[la:lb], 75))
+        above = db[la : fb + hold] > phrase - _SUNG_RANGE
+        run = np.convolve(above.astype(int), np.ones(hold, dtype=int), mode="valid") == hold
+        on = np.flatnonzero(run[: fb - la])
+        if not on.size or on[0] * _HOP < 0.3:
+            continue
+        t = (la + on[0]) * _HOP
+        got = [h for h in near(t, -1.0, 0.3) if h >= first.start]  # attacco sentito, anche cantato piano
+        if not got:
+            continue
+        # Whisper ha riconosciuto proprio questa parola prima di lì: la voce più debole è sua
+        h = said(first.text, first.start - 1.5, t + 0.3)
+        if h is not None and h[0] < t - 0.3:
+            continue
+        new = min(max(got[0], first.start), t)  # dove Whisper l'ha sentita attaccare, se poco prima
+        first.start = min(new, first.end - 0.08)
+        first.hold = -1.0
+        fixed += 1
     return fixed
 
 
@@ -1391,6 +1454,7 @@ def resnap_saved(song_dir: Path) -> int | None:
     except (OSError, ValueError, KeyError, TypeError):
         sung = []
     if sung:
+        fixed += late_line_starts(lines, voice, sung)
         fixed += early_line_starts(lines, voice, sung)
     fixed += extend_to_voice(lines, voice, sung)
     if sung:
@@ -1578,6 +1642,7 @@ def build(
                 log.exception("Allineamento forzato non riuscito: uso i tempi stimati")
             clamp_line_starts(lines)
             snap_to_voice(lines, voiced)
+            late_line_starts(lines, voiced, sung)
             early_line_starts(lines, voiced, sung)
             extend_to_voice(lines, voiced, sung)
             fix_held_notes(lines, voiced, sung, language)

@@ -410,3 +410,38 @@ def test_nota_ripresa_dopo_una_pausa_non_si_accorcia():
     extend_to_voice([line], (db, -40.0), [Word("E", 1.0, 1.3), Word("fateme", 5.0, 5.5)])
     assert line.words[0].end == 5.0
     assert line.words[0].hold == pytest.approx(1.3)
+
+
+def _bleed_intro():
+    """Strumenti rimasti nella traccia della voce (-22 dB, 10 sotto il canto) fino a 3 s, poi il canto."""
+    import numpy as np
+
+    db = np.full(int(10 / _HOP), -60.0)
+    db[int(0.0 / _HOP) : int(3.0 / _HOP)] = -22.0
+    db[int(3.0 / _HOP) : int(6.0 / _HOP)] = -12.0
+    line = Line([Word("Stanotte", 0.2, 3.5), Word("ti", 3.5, 3.8), Word("pretendo", 3.8, 5.5)])
+    return line, (db, -45.0)
+
+
+def test_prima_parola_non_parte_sugli_strumenti():
+    """«Ti pretendo»: Whisper sente «Sto a notte», «Stanotte» restava al tempo di LRCLIB 3 s prima."""
+    from singitnow.lyrics import late_line_starts, snap_to_voice
+
+    line, voice = _bleed_intro()
+    snap_to_voice([line], voice)
+    assert line.words[0].start == 0.2  # gli strumenti sembrano voce
+    heard = [Word("Sto", 3.0, 3.2), Word("notte", 3.2, 3.5), Word("pretendo", 3.8, 5.5)]
+    assert late_line_starts([line], voice, heard) == 1
+    assert line.words[0].start == pytest.approx(3.0)
+
+
+def test_prima_parola_riconosciuta_prima_non_si_sposta():
+    """Whisper ha sentito proprio la parola all'inizio: è cantata piano, resta dov'è."""
+    from singitnow.lyrics import late_line_starts
+
+    line, voice = _bleed_intro()
+    heard = [Word("Stanotte", 0.25, 1.0), Word("pretendo", 3.8, 5.5)]
+    assert late_line_starts([line], voice, heard) == 0
+    line, voice = _bleed_intro()
+    heard = [Word("Stanotte", 1.5, 2.5), Word("ti", 3.0, 3.2), Word("pretendo", 3.8, 5.5)]
+    assert late_line_starts([line], voice, heard) == 0

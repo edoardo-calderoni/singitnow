@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from "react";
  * la schermata principale (il video sfuma già nel colore di fondo). Un tocco, un clic o un tasto lo
  * saltano. Solo una volta per avvio: ricaricando la pagina non riparte.
  */
+declare const __SPLASH_V__: string;
 const SEEN = "sin.splash";
 // immagine trasparente di 1 pixel: sostituisce l'icona predefinita del lettore video
 const BLANK = "data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7";
@@ -59,7 +60,7 @@ export function Splash({ onDone, src = "/splash.mp4", muted = false }: { onDone:
       {/* nascosto finché non parte davvero: niente anteprima grigia del lettore (Android) */}
       <video
         ref={video}
-        src={src}
+        src={`${src}?v=${__SPLASH_V__}`}
         muted={muted}
         playsInline
         preload="auto"

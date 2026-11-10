@@ -69,6 +69,9 @@ class Pipeline:
     def __init__(self) -> None:
         self._wake = threading.Event()
         self._thread: threading.Thread | None = None
+        self._repair_lock = threading.Lock()
+        self._repairing: list[str] = []
+        self._repair_thread: threading.Thread | None = None
         self._ready_callbacks: list = []
         self._timing = Timing()
         # fase in corso del brano in elaborazione: nome, inizio, avanzamento noto (0..1 o None)
@@ -416,11 +419,52 @@ class Pipeline:
         audio.to_m4a(vocals_wav, song.dir / "vocals.m4a")
         audio.to_m4a(inst_wav, song.dir / "instrumental.m4a")
 
+    # ------------------------------------------------------------------ riparazione dei testi fuori tempo
+    def repair_lyrics(self, song_ids: list[str]) -> None:
+        """Rifà riconoscimento della voce e sincronizzazione del testo, un brano alla volta in sottofondo
+        (Brani con problemi): con un testo, la voce si ascolta tutta e nella lingua del testo."""
+        with self._repair_lock:
+            for sid in song_ids:
+                if library.get(sid) and sid not in self._repairing:
+                    self._repairing.append(sid)
+            if self._repair_thread is None or not self._repair_thread.is_alive():
+                self._repair_thread = threading.Thread(target=self._repair_loop, daemon=True)
+                self._repair_thread.start()
+
+    @staticmethod
+    def _current_text(sid: str) -> str | None:
+        """Testo già in libreria (non trascritto dalla voce): si tiene se online non si trova."""
+        s = library.get(sid)
+        try:
+            data = json.loads((s.dir / "lyrics.json").read_text(encoding="utf-8"))
+        except (AttributeError, OSError, ValueError):
+            return None
+        if data.get("source") == "whisper":
+            return None
+        return "\n".join(l.get("text", "") for l in data.get("lines") or []) or None
+
+    def repairing(self) -> list[str]:
+        with self._repair_lock:
+            return list(self._repairing)
+
+    def _repair_loop(self) -> None:
+        while True:
+            with self._repair_lock:
+                if not self._repairing:
+                    self._repair_thread = None
+                    return
+                sid = self._repairing[0]
+            try:
+                self._lyrics_only(sid, fallback=self._current_text(sid))
+            finally:
+                with self._repair_lock:
+                    self._repairing.remove(sid)
+
     def set_lyrics_text(self, song_id: str, text: str) -> None:
         """Testo corretto a mano dall'app principale: si tiene così com'è e si risincronizza con la voce."""
         threading.Thread(target=self._lyrics_only, args=(song_id, text), daemon=True).start()
 
-    def _build_lyrics(self, sid: str, vocals_path, text: str | None = None) -> None:
+    def _build_lyrics(self, sid: str, vocals_path, text: str | None = None, fallback: str | None = None) -> None:
         s = library.get(sid)
         data = lyrics.build(
             vocals_path,
@@ -429,11 +473,12 @@ class Pipeline:
             s.duration,
             lambda p, msg: (self._report(p), library.update(sid, progress=_span(P_LYRICS, p), step=msg)),
             text=text,
+            fallback=fallback,
         )
         (s.dir / "lyrics.json").write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
         library.update(sid, lyrics_source=data["source"], language=data.get("language", ""))
 
-    def _lyrics_only(self, sid: str, text: str | None = None) -> None:
+    def _lyrics_only(self, sid: str, text: str | None = None, fallback: str | None = None) -> None:
         song = library.get(sid)
         if not song:
             return
@@ -441,7 +486,7 @@ class Pipeline:
         try:
             step = "Sincronizzo il testo corretto…" if text is not None else "Rigenero il testo…"
             library.update(sid, status=LYRICS, progress=_span(P_LYRICS, 0), step=step)
-            self._build_lyrics(sid, song.dir / "vocals.m4a", text)
+            self._build_lyrics(sid, song.dir / "vocals.m4a", text, fallback)
             self._build_pitch(sid)  # le note seguono le parole del nuovo testo
             library.update(sid, status=READY, progress=1.0, step="Pronto")
         except Exception as e:

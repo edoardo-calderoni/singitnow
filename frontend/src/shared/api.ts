@@ -158,9 +158,13 @@ export interface HealthReport {
     status: string;
     thumbnail_url?: string;
     issues: { code: string; level: "error" | "warn" | "info"; text: string }[];
+    repairing: boolean; // in riparazione o in coda
+    queued?: number; // 0 = in corso
+    repaired: boolean; // voce già riascoltata tutta: resta da sistemare a mano
   }[];
   total: number;
   count: { error: number; warn: number; info: number };
+  repairing: number;
 }
 
 export interface StorageReport {
@@ -319,6 +323,7 @@ export const api = {
   retry: (id: string) => req("POST", `/api/songs/${id}/retry`),
   health: () => req<HealthReport>("GET", "/api/admin/health"),
   healthIgnore: (song_id: string, code: string) => req<HealthReport>("POST", "/api/admin/health/ignore", { song_id, code }),
+  healthRepair: (song_ids: string[]) => req<HealthReport>("POST", "/api/admin/health/repair", { song_ids }),
   patchSong: (id: string, data: Partial<Pick<Song, "artist" | "title" | "language">>) =>
     req<Song>("PATCH", `/api/songs/${id}`, data),
   setLyrics: (id: string, text: string) => req("PUT", `/api/songs/${id}/lyrics`, { text }),

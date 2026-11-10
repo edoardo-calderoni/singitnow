@@ -21,7 +21,7 @@ import threading
 
 from . import config
 from .library import ERROR, READY, library
-from .lyrics import _norm, _similar
+from .lyrics import _norm, _similar, full_transcription
 
 ERR, WARN, INFO = "error", "warn", "info"
 _LEVEL = {ERR: 0, WARN: 1, INFO: 2}
@@ -136,10 +136,23 @@ def ignore(song_id: str, code: str) -> None:
         _ignore_path().write_text(json.dumps(data), encoding="utf-8")
 
 
-def report() -> dict:
+REPAIRABLE = ("lyrics_off", "lyrics_partial", "lyrics_unverified")
+
+
+def report(repairing: list[str] | None = None) -> dict:
+    """Brani con problemi. `repairing`: brani in riparazione (si mostrano anche se ora non hanno problemi)."""
     ignored = _ignored()
+    repairing = repairing or []
     songs = []
     for s in library.all():
+        if s.id in repairing:
+            p = s.to_public()
+            songs.append({
+                "id": s.id, "title": s.title, "artist": s.artist, "status": s.status,
+                "thumbnail_url": p.get("thumbnail_url"), "issues": [], "repairing": True,
+                "queued": repairing.index(s.id), "repaired": False,
+            })
+            continue
         issues = check(s)
         key = list(_cache.get(s.id, ((),))[0])
         skip = ignored.get(s.id, {})
@@ -149,8 +162,14 @@ def report() -> dict:
         p = s.to_public()
         songs.append({
             "id": s.id, "title": s.title, "artist": s.artist, "status": s.status,
-            "thumbnail_url": p.get("thumbnail_url"), "issues": issues,
+            "thumbnail_url": p.get("thumbnail_url"), "issues": issues, "repairing": False,
+            # riparabile in automatico finché la voce non è stata riascoltata tutta
+            "repaired": full_transcription(s.dir),
         })
-    songs.sort(key=lambda x: (min(_LEVEL[i["level"]] for i in x["issues"]), x["title"].casefold()))
-    count = {lvl: sum(1 for x in songs if min(_LEVEL[i["level"]] for i in x["issues"]) == _LEVEL[lvl]) for lvl in _LEVEL}
-    return {"songs": songs, "total": len(library.all()), "count": count}
+
+    def level(x):
+        return min((_LEVEL[i["level"]] for i in x["issues"]), default=-1)
+
+    songs.sort(key=lambda x: (level(x), x["title"].casefold()))
+    count = {lvl: sum(1 for x in songs if level(x) == _LEVEL[lvl]) for lvl in _LEVEL}
+    return {"songs": songs, "total": len(library.all()), "count": count, "repairing": len(repairing)}

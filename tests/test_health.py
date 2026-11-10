@@ -99,3 +99,44 @@ def test_solo_dal_pc_e_reazioni(add_song):
         assert oks == [True] * 5 + [False] * 2  # al massimo 5 ogni 3 secondi
     finally:
         appmod.playlist.now_playing = None
+
+
+def test_lingua_dal_testo():
+    from singitnow.lyrics import guess_language, parse_plain
+
+    it = parse_plain("Voglio una vita che se ne frega\nche se ne frega di tutto sì\nnon è mai tardi per me\nio sono come te quando non ci sei\nma la vita è una cosa che non si ferma")
+    en = parse_plain("I want it that way\nyou are my fire the one desire\nbelieve when I say\nyou are all that I need for the love")
+    assert guess_language(it) == "it"
+    assert guess_language(en) == "en"
+    assert guess_language(parse_plain("la la la")) is None
+
+
+def test_ripara_testi(add_song, monkeypatch):
+    from singitnow import app as appmod
+    from singitnow.pipeline import pipeline
+
+    s = add_song("a")
+    _complete(s)
+    _lyrics(s, WORDS)
+    _whisper(s, [(w, t + 30) for w, t in WORDS])
+    done = []
+
+    def fake(sid, text=None, fallback=None):
+        _whisper(s, WORDS)
+        data = json.loads((s.dir / "whisper.json").read_text(encoding="utf-8"))
+        data["key"] = "small:1:full:it"
+        (s.dir / "whisper.json").write_text(json.dumps(data), encoding="utf-8")
+        done.append(sid)
+
+    monkeypatch.setattr(pipeline, "_lyrics_only", fake)
+    local = TestClient(appmod.app, client=("127.0.0.1", 5000))
+    row = local.get("/api/admin/health").json()["songs"][0]
+    assert row["issues"][0]["code"] == "lyrics_off" and not row["repaired"]
+    local.post("/api/admin/health/repair", json={"song_ids": ["a"]})
+    import time
+    for _ in range(100):
+        if not pipeline.repairing():
+            break
+        time.sleep(0.05)
+    assert done == ["a"] and pipeline.repairing() == []
+    assert local.get("/api/admin/health").json()["songs"] == []  # ora le parole si sentono al loro posto

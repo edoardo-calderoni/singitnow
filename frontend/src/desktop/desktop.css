@@ -3889,3 +3889,23 @@ body {
   gap: 6px;
   max-width: 300px;
 }
+.health-issue.repairing {
+  color: var(--cyan);
+}
+.health-issue.hint {
+  font-style: italic;
+}
+.health-repair-all {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin: 4px 0 10px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  background: var(--surface-2);
+  font-size: 13px;
+}
+.health-repair-all p {
+  margin: 0;
+  flex: 1;
+}

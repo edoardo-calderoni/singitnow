@@ -978,7 +978,7 @@ def reaction(req: ReactionReq):
 # ------------------------------------------------------------------ brani con problemi (solo dal PC)
 @app.get("/api/admin/health", dependencies=[Depends(admin.require_local)])
 async def health_report():
-    return await run_in_threadpool(health.report)
+    return await run_in_threadpool(health.report, pipeline.repairing())
 
 
 class HealthIgnoreReq(BaseModel):
@@ -989,7 +989,18 @@ class HealthIgnoreReq(BaseModel):
 @app.post("/api/admin/health/ignore", dependencies=[Depends(admin.require_local)])
 async def health_ignore(req: HealthIgnoreReq):
     health.ignore(req.song_id, req.code)
-    return await run_in_threadpool(health.report)
+    return await run_in_threadpool(health.report, pipeline.repairing())
+
+
+class HealthRepairReq(BaseModel):
+    song_ids: list[str]
+
+
+@app.post("/api/admin/health/repair", dependencies=[Depends(admin.require_local)])
+async def health_repair(req: HealthRepairReq):
+    """Riascolta la voce e risincronizza il testo dei brani indicati (uno alla volta, in sottofondo)."""
+    pipeline.repair_lyrics(req.song_ids)
+    return await run_in_threadpool(health.report, pipeline.repairing())
 
 
 # ------------------------------------------------------------------ punteggi della serata

@@ -1,10 +1,14 @@
-import { AlertTriangle, EyeOff, Loader2, Pencil, RefreshCw, Stethoscope, Trash2, X } from "lucide-react";
+import { AlertTriangle, EyeOff, Loader2, Pencil, RefreshCw, Stethoscope, Trash2, Wand2, X } from "lucide-react";
 import { useCallback, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { api, HealthReport, Song } from "../shared/api";
 import { EditDialog, LyricsDialog } from "./Dialogs";
 
 const LEVEL_LABEL = { error: "Da sistemare", warn: "Da controllare", info: "Da sapere" } as const;
+/** Problemi che «Ripara» sistema da solo: testo fuori tempo o non verificabile. */
+const REPAIRABLE = ["lyrics_off", "lyrics_partial", "lyrics_unverified"];
+type HealthSong = HealthReport["songs"][number];
+const repairable = (s: HealthSong) => !s.repairing && !s.repaired && s.issues.some((i) => REPAIRABLE.includes(i.code));
 
 /** Voce dei Settaggi (solo nell'app sul PC): apre l'elenco dei brani con problemi. */
 export function HealthSetting({ onError }: { onError: (m: string) => void }) {
@@ -36,6 +40,14 @@ function HealthDialog({ onClose, onError }: { onClose: () => void; onError: (m: 
   useEffect(() => {
     load();
   }, [load]);
+  // mentre si riparano i brani l'elenco si aggiorna da solo
+  const working = (r?.repairing ?? 0) > 0;
+  useEffect(() => {
+    if (!working) return;
+    const t = window.setInterval(() => api.health().then(setR).catch(() => {}), 3000);
+    return () => window.clearInterval(t);
+  }, [working]);
+  const toRepair = r ? r.songs.filter(repairable).map((s) => s.id) : [];
 
   const run = async (key: string, fn: () => Promise<unknown>) => {
     setBusy(key);
@@ -79,9 +91,20 @@ function HealthDialog({ onClose, onError }: { onClose: () => void; onError: (m: 
                 <b>{r.total}</b> brani in libreria
               </div>
             </div>
+            {toRepair.length > 0 && (
+              <div className="health-repair-all">
+                <p>
+                  <b>Testo fuori tempo?</b> «Ripara» riascolta tutta la voce del brano e rifà la sincronizzazione: di solito basta
+                  (circa mezzo minuto a brano, in sottofondo).
+                </p>
+                <button className="btn btn-primary btn-sm" disabled={!!busy} onClick={() => run("all", () => api.healthRepair(toRepair).then(setR))}>
+                  <Wand2 size={15} /> Ripara tutti ({toRepair.length})
+                </button>
+              </div>
+            )}
             <p className="storage-note">
-              Testo fuori tempo: prova «Risincronizza» (cerca di nuovo il testo con artista e titolo giusti) oppure correggi il
-              testo a mano; se non migliora, reimporta il brano da un altro video.
+              Se dopo «Ripara» il testo è ancora fuori tempo: «Risincronizza» (cerca di nuovo il testo, magari con artista e titolo
+              corretti), oppure correggi il testo a mano; se non migliora, reimporta il brano da un altro video.
             </p>
             <ol className="health-list">
               {r.songs.map((s) => {
@@ -95,6 +118,12 @@ function HealthDialog({ onClose, onError }: { onClose: () => void; onError: (m: 
                       <b className="ellipsis">{s.title}</b>
                       <span className="muted ellipsis">{s.artist}</span>
                       <ul>
+                        {s.repairing && (
+                          <li className="health-issue repairing">
+                            {s.queued === 0 ? <Loader2 size={14} className="spin" /> : <Wand2 size={14} />}
+                            <span>{s.queued === 0 ? "Riparo il testo: ascolto la voce e risincronizzo…" : "In coda per la riparazione"}</span>
+                          </li>
+                        )}
                         {s.issues.map((i) => (
                           <li key={i.code} className={`health-issue ${i.level}`}>
                             <AlertTriangle size={14} />
@@ -111,15 +140,25 @@ function HealthDialog({ onClose, onError }: { onClose: () => void; onError: (m: 
                             </button>
                           </li>
                         ))}
+                        {s.repaired && s.issues.some((i) => REPAIRABLE.includes(i.code)) && (
+                          <li className="health-issue hint">
+                            <span>Già riparato una volta: il testo va corretto a mano, oppure va reimportato il brano da un altro video.</span>
+                          </li>
+                        )}
                       </ul>
                     </div>
                     <div className="health-actions">
-                      {ready && song && (
+                      {repairable(s) && (
+                        <button className="btn btn-primary btn-sm" disabled={!!busy} onClick={() => run(`rep:${s.id}`, () => api.healthRepair([s.id]).then(setR))}>
+                          <Wand2 size={14} /> Ripara
+                        </button>
+                      )}
+                      {ready && song && !s.repairing && (
                         <button className="btn btn-ghost btn-sm" disabled={!!busy} onClick={() => setEditing(song)}>
                           <RefreshCw size={14} /> Risincronizza
                         </button>
                       )}
-                      {ready && song && (
+                      {ready && song && !s.repairing && (
                         <button className="btn btn-ghost btn-sm" disabled={!!busy} onClick={() => setLyricsFor(song)}>
                           <Pencil size={14} /> Correggi il testo
                         </button>
@@ -137,7 +176,7 @@ function HealthDialog({ onClose, onError }: { onClose: () => void; onError: (m: 
                       <button
                         className="icon-btn danger"
                         title="Elimina il brano dalla libreria"
-                        disabled={!!busy}
+                        disabled={!!busy || s.repairing}
                         onClick={() => {
                           if (!confirm(`Eliminare «${s.title}» dalla libreria?`)) return;
                           run(`del:${s.id}`, () => api.deleteSong(s.id));

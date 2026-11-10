@@ -215,19 +215,55 @@ def _get_whisper():
         return _whisper
 
 
-def transcribe(vocals: Path, on_progress: Callable[[float], None], audio=None) -> tuple[list[list[Word]], str]:
-    """Trascrive la traccia vocale. Restituisce (segmenti di parole con tempi, lingua)."""
+def placed_ratio(lines: list[Line], sung: list[Word], near: float = 1.5) -> float:
+    """Quota delle parole del testo (di almeno 3 lettere) che cadono dove la voce le canta (±`near` s)."""
+    import bisect
+
+    heard = sorted((w.start, _norm(w.text)) for w in sung if _norm(w.text))
+    times = [t for t, _ in heard]
+    ok = tot = 0
+    for l in lines:
+        for w in l.words:
+            n = _norm(w.text)
+            if len(n) < 3:
+                continue
+            tot += 1
+            lo, hi = bisect.bisect_left(times, w.start - near), bisect.bisect_right(times, w.start + near)
+            ok += any(_similar(n, heard[i][1]) > 0 for i in range(lo, hi))
+    return ok / tot if tot else 0.0
+
+
+# frasi che Whisper «sente» nei silenzi: vengono dai sottotitoli con cui è stato addestrato
+_HALLUCINATION = re.compile(
+    r"sottotitoli|amara\.org|qtss|thanks? for watching|subtitles? by|sous-titr|untertitel|subt[ií]tulos", re.I
+)
+
+
+def transcribe(
+    vocals: Path, on_progress: Callable[[float], None], audio=None, language: str | None = None, vad: bool = True
+) -> tuple[list[list[Word]], str]:
+    """Trascrive la traccia vocale. Restituisce (segmenti di parole con tempi, lingua).
+
+    Con un testo da sincronizzare (`vad=False`, `language` presa dal testo) si ascolta tutta la voce:
+    il filtro del parlato scarta intere strofe cantate (ritornelli tenuti, voce con effetti), e la
+    lingua riconosciuta dai primi 30 secondi a volte è sbagliata (italiano scambiato per latino).
+    Senza testo il filtro resta: nei silenzi Whisper inventerebbe frasi che finirebbero sullo schermo.
+    """
     model = _get_whisper()
     with _whisper_lock:
         segments, info = model.transcribe(
             _load_16k(vocals) if audio is None else audio,
             word_timestamps=True,
-            vad_filter=True,
+            vad_filter=vad,
             condition_on_previous_text=False,
             beam_size=5,
+            language=language or None,
+            language_detection_segments=4,
         )
         result: list[list[Word]] = []
         for seg in segments:
+            if _HALLUCINATION.search(seg.text or ""):
+                continue  # frase che Whisper inventa nei silenzi (titoli di coda dei sottotitoli)
             words = [Word(w.word.strip(), w.start, w.end) for w in (seg.words or []) if w.word.strip()]
             if words:
                 result.append(words)
@@ -1172,19 +1208,63 @@ def to_json(lines: list[Line], source: str, language: str) -> dict:
     return {"source": source, "language": language, "snap": SNAP_VERSION, "lines": out}
 
 
-def _cached_transcription(vocals: Path, audio, on_progress: Callable[[float], None]) -> tuple[list[list[Word]], str]:
+_STOP = {
+    "it": "il lo la che non di un una per sono mi ti si ma con del della come io tu quando cosa anche più è",
+    "en": "the and you i to me my it is in that of your be all on we for don't can love what this",
+    "es": "el la que de y en no me te mi es un una por con lo se tu yo para como",
+    "fr": "le la les de et je tu que des un une est pas mon ne qui dans pour moi toi",
+    "de": "der die das und ich du nicht ist ein eine mich dich mit wir sie zu es auf",
+    "pt": "o a que de e não eu você um uma meu é com se do da para em",
+}
+_STOP_SETS = {k: set(v.split()) for k, v in _STOP.items()}
+
+
+def guess_language(lines: list[Line]) -> str | None:
+    """Lingua del testo (parole più comuni): per dirla a Whisper invece di fargliela indovinare."""
+    if any(romaji.is_japanese(l.text) for l in lines):
+        return "ja"
+    words = [w.text.lower().strip(".,!?¡¿\"'()…") for l in lines for w in l.words]
+    if len(words) < 20:
+        return None
+    hits = {k: sum(w in s for w in words) for k, s in _STOP_SETS.items()}
+    best = max(hits, key=hits.get)
+    ranked = sorted(hits.values(), reverse=True)
+    if ranked[0] < 0.08 * len(words) or ranked[0] < 1.4 * ranked[1]:
+        return None  # testo misto o lingua che non conosco: decide Whisper
+    return best
+
+
+def transcription_key(vocals: Path, language: str | None = None, vad: bool = True) -> str:
+    """Chiave della trascrizione salvata: cambia con il modello, la voce e il modo di ascoltarla."""
+    base = f"{config.WHISPER_MODEL}:{vocals.stat().st_size}"
+    return base if vad and not language else f"{base}:full:{language or 'auto'}"
+
+
+def full_transcription(song_dir: Path) -> bool:
+    """La trascrizione salvata ascolta già tutta la voce (riconoscimento migliorato)?"""
+    import json
+
+    try:
+        return ":full:" in json.loads((song_dir / "whisper.json").read_text(encoding="utf-8")).get("key", "")
+    except (OSError, ValueError, AttributeError):
+        return False
+
+
+def _cached_transcription(
+    vocals: Path, audio, on_progress: Callable[[float], None], language: str | None = None, vad: bool = True
+) -> tuple[list[list[Word]], str]:
     """Trascrizione di Whisper, salvata accanto alla voce: rigenerare il testo diventa rapido."""
     import json
 
     cache = vocals.with_name("whisper.json")
-    key = f"{config.WHISPER_MODEL}:{vocals.stat().st_size}"
+    key = transcription_key(vocals, language, vad)
     try:
         data = json.loads(cache.read_text(encoding="utf-8"))
         if data.get("key") == key:
             return [[Word(t, s, e) for t, s, e in seg] for seg in data["segments"]], data["language"]
     except (OSError, ValueError, KeyError):
         pass
-    segments, language = transcribe(vocals, on_progress, audio=audio)
+    segments, language = transcribe(vocals, on_progress, audio=audio, language=language, vad=vad)
     try:
         cache.write_text(
             json.dumps({"key": key, "language": language, "segments": [[(w.text, w.start, w.end) for w in seg] for seg in segments]}, ensure_ascii=False),
@@ -1202,9 +1282,11 @@ def build(
     duration: float,
     on_progress: Callable[[float, str], None],
     text: str | None = None,
+    fallback: str | None = None,
 ) -> dict:
     """Testo sincronizzato. Con `text` (scritto a mano dall'app principale) non si cerca online:
-    si sincronizzano con la voce esattamente quelle righe."""
+    si sincronizzano con la voce esattamente quelle righe. `fallback`: testo già in libreria, da
+    risincronizzare se online non si trova (LRCLIB irraggiungibile) invece di trascrivere la voce."""
     lines: list[Line] = []
     synced = False
     record = None
@@ -1213,6 +1295,10 @@ def build(
     else:
         on_progress(0.02, "Cerco il testo online…")
         record = fetch_lrclib(artist, title, duration)
+        if not record and fallback:
+            log.info("Testo non trovato online: risincronizzo quello già in libreria")
+            text = fallback
+            lines = parse_plain(text)
     if record:
         if record.get("syncedLyrics"):
             lines, synced = parse_lrc(record["syncedLyrics"]), True
@@ -1222,8 +1308,10 @@ def build(
     on_progress(0.08, "Ascolto la voce per sincronizzare le parole…")
     audio = _load_16k(vocals)
     voiced = voice_activity(audio)
+    # con un testo si ascolta tutta la voce nella sua lingua (vedi transcribe)
+    hint = guess_language(lines) if lines else None
     sung_segments, language = _cached_transcription(
-        vocals, audio, lambda p: on_progress(0.08 + 0.72 * p, "Sincronizzo le parole…")
+        vocals, audio, lambda p: on_progress(0.08 + 0.72 * p, "Sincronizzo le parole…"), language=hint, vad=not lines
     )
     # Giapponese: testo e voce in romaji diviso in parole, così si confrontano e si colorano parola per parola
     ja_text = any(romaji.is_japanese(l.text) for l in lines)
@@ -1234,7 +1322,24 @@ def build(
     sung = [w for seg in sung_segments for w in seg]
 
     if lines and sung:
-        ratio = align(lines, sung, duration)
+        if synced:
+            # Con i tempi di LRCLIB come punti fermi; se il video è un'altra versione (più lenta, dal
+            # vivo, con pause diverse) quei tempi ingannano: si prova anche seguendo solo l'ordine
+            # delle parole, come per un testo scritto a mano, e si tiene l'abbinamento migliore.
+            import copy
+
+            plain = copy.deepcopy(lines)
+            for l in plain:
+                l.lrc_time = None
+            ratio = align(lines, sung, duration)
+            ratio_plain = align(plain, sung, duration)
+            # si confronta il risultato (parole che cadono dove si sentono), non le parole abbinate:
+            # con i tempi di LRCLIB le righe che il video non canta si tolgono e la quota scende
+            if placed_ratio(plain, sung) > placed_ratio(lines, sung) + 0.1:
+                log.info("Testo di LRCLIB con tempi di un'altra versione: seguo l'ordine delle parole")
+                lines, ratio = plain, ratio_plain
+        else:
+            ratio = align(lines, sung, duration)
         log.info("Allineamento testo: %.0f%% parole abbinate", ratio * 100)
         # il testo scritto a mano si tiene comunque: è quello giusto, va solo messo a tempo
         if ratio >= 0.3 or text is not None:

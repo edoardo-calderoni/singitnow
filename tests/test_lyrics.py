@@ -281,3 +281,41 @@ def test_riga_spostata_da_lrclib_dopo_una_pausa():
     align(lines, heard, duration=80.0)
     assert lines[1].words[0].start == pytest.approx(46.0)
     assert [l.words[0].start for l in (lines[0], lines[2], lines[3])] == pytest.approx([10.0, 53.0, 60.0])
+
+
+def _intro_song(intro_db: float):
+    """Due righe d'apertura a 2 s, pausa, poi la canzone (6 righe) da 15 s."""
+    import numpy as np
+
+    db = np.full(int(40 / _HOP), -60.0)
+    db[int(2.0 / _HOP) : int(5.0 / _HOP)] = intro_db
+    db[int(15.0 / _HOP) : int(33.0 / _HOP)] = -12.0
+    intro = [Line([Word("che", 2.0, 2.5), Word("giornata", 2.5, 3.0)]), Line([Word("portame", 3.5, 4.0), Word("vino", 4.0, 5.0)])]
+    song = [Line([Word("fateme", 15.0 + 3 * i, 16.0 + 3 * i), Word("cantare", 16.0 + 3 * i, 17.0 + 3 * i)]) for i in range(6)]
+    heard = [w for l in intro + song for w in l.words]
+    return intro + song, (db, -40.0), [Word(w.text, w.start, w.end) for w in heard]
+
+
+def test_introduzione_parlata_di_sottofondo_si_toglie():
+    from singitnow.lyrics import drop_intro
+
+    lines, voice, heard = _intro_song(-32.0)  # 20 dB sotto il canto
+    assert drop_intro(lines, voice, heard) == 2
+    assert lines[0].words[0].start == 15.0
+
+
+def test_riga_d_apertura_agganciata_a_caso_si_toglie():
+    from singitnow.lyrics import drop_intro
+
+    lines, voice, heard = _intro_song(-14.0)
+    heard = [w for w in heard if w.start > 10]  # Whisper all'inizio sente tutt'altro
+    assert drop_intro(lines, voice, heard) == 2
+
+
+def test_apertura_vera_cantata_resta():
+    """Un attacco a cappella o cantato piano, sentito da Whisper, è la canzone."""
+    from singitnow.lyrics import drop_intro
+
+    lines, voice, heard = _intro_song(-22.0)  # 10 dB sotto: cantato piano
+    assert drop_intro(lines, voice, heard) == 0
+    assert len(lines) == 8

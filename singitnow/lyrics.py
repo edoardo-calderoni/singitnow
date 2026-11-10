@@ -805,8 +805,9 @@ _HOP = 0.02  # risoluzione dell'inviluppo della voce (secondi)
 # se cambia, i testi già in libreria vengono riallineati alla voce all'avvio
 # (4: note tenute, fix_held_notes; 5: ogni parola tenuta si allunga, non solo l'ultima della riga;
 #  6: la nota tenuta finisce al primo stacco dopo le sillabe della parola;
-#  7: parole che partono sulla coda della parola prima, o in pieno silenzio)
-SNAP_VERSION = 7
+#  7: parole che partono sulla coda della parola prima, o in pieno silenzio;
+#  8: via le introduzioni parlate o di sottofondo, drop_intro)
+SNAP_VERSION = 8
 _PHRASE_RANGE = 15.0  # dB sotto il volume tipico della frase entro cui la voce conta come «cantato»
 _SNAP_GAP = 0.3  # s di silenzio vero dentro una parola: la voce prima era la coda della parola precedente
 
@@ -1174,6 +1175,56 @@ def fix_held_notes(
     return fixed
 
 
+_INTRO_LINES = 4  # righe al massimo di un'introduzione da togliere
+_INTRO_GAP = 4.0  # s di pausa fra l'introduzione e la canzone vera
+_INTRO_QUIET = 15.0  # dB sotto il canto: voci di sottofondo, parlato (un attacco cantato piano sta sui 10)
+_INTRO_HEARD = 0.5  # quota minima di parole sentite davvero da Whisper dove sono state messe
+
+
+def drop_intro(lines: list[Line], voice, sung: list[Word]) -> int:
+    """Toglie le righe d'apertura che non sono la canzone: poche righe isolate dalla canzone vera da
+    una pausa lunga (dove compaiono i pallini dell'attesa) e in più
+    - molto più basse del canto: parlato o voci di sottofondo del video («Ah, che giornata…» in
+      Fateme cantà), oppure
+    - messe dove Whisper sente altre parole: una riga del testo agganciata a caso alle voci
+      dell'intro del video («Yo, I'll tell you what I want» in Wannabe).
+    Un'apertura vera (a cappella, a voce piena) è cantata come il resto e resta. Restituisce le
+    righe tolte."""
+    import numpy as np
+
+    db, _ = voice
+
+    def level(ls: list[Line]) -> float | None:
+        parts = [db[int(w.start / _HOP) : int(w.end / _HOP)] for l in ls for w in l.words if w.start >= 0]
+        parts = [p for p in parts if p.size]
+        return float(np.percentile(np.concatenate(parts), 75)) if parts else None
+
+    dropped = 0
+    for _ in range(2):  # anche un'introduzione in due pezzi
+        k = next(
+            (
+                i + 1
+                for i in range(min(_INTRO_LINES, len(lines) - 1))
+                if lines[i].words
+                and lines[i + 1].words
+                and lines[i + 1].words[0].start - lines[i].words[-1].end >= _INTRO_GAP
+            ),
+            0,
+        )
+        if not k or len(lines) - k < max(4, 2 * k):
+            break
+        intro, song = level(lines[:k]), level(lines[k:])
+        quiet = intro is not None and song is not None and intro <= song - _INTRO_QUIET
+        checkable = sung and any(len(_norm(w.text)) >= 3 for l in lines[:k] for w in l.words)
+        unheard = bool(checkable) and placed_ratio(lines[:k], sung) < _INTRO_HEARD
+        if not (quiet or unheard):
+            break
+        log.info("Tolta l'introduzione che non è la canzone: %s", " / ".join(l.text for l in lines[:k]))
+        del lines[:k]
+        dropped += k
+    return dropped
+
+
 def resnap_saved(song_dir: Path) -> int | None:
     """Testo già in libreria: riallinea l'inizio delle parole all'attacco della voce (una volta sola).
 
@@ -1206,6 +1257,8 @@ def resnap_saved(song_dir: Path) -> int | None:
     fixed += extend_to_voice(lines, voice, sung)
     if sung:
         fixed += fix_held_notes(lines, voice, sung, data.get("language", ""))
+    if not data.get("source", "").startswith("manual"):  # il testo scritto a mano resta tutto
+        fixed += drop_intro(lines, voice, sung)
     out = to_json(lines, data.get("source", ""), data.get("language", ""))
     path.write_text(json.dumps(out, ensure_ascii=False), encoding="utf-8")
     return fixed
@@ -1386,6 +1439,8 @@ def build(
             snap_to_voice(lines, voiced)
             extend_to_voice(lines, voiced, sung)
             fix_held_notes(lines, voiced, sung, language)
+            if text is None:  # il testo scritto a mano resta tutto
+                drop_intro(lines, voiced, sung)
             return to_json(lines, "manual+whisper" if text is not None else "lrclib+whisper", language)
     if lines and synced:
         # Allineamento scarso (es. lingua non riconosciuta): tempi per riga di LRCLIB.
@@ -1401,6 +1456,7 @@ def build(
         lines = [Line(part) for seg in sung_segments for part in _split_long(seg)]
         snap_to_voice(lines, voiced)
         extend_to_voice(lines, voiced, sung)
+        drop_intro(lines, voiced, [])
         return to_json(lines, "whisper", language)
     if lines:
         _distribute([w for l in lines for w in l.words], 0, duration)

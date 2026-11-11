@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { ListOrdered, MicOff, Trophy, Users, X } from "lucide-react";
 import { api, Standing } from "../shared/api";
@@ -33,7 +33,7 @@ export function CompetitionSwitch({ onShowRanking }: { onShowRanking: () => void
           <Trophy size={15} /> Competizione
         </span>
       </label>
-      {comp.enabled && !comp.active && comp.standings.length > 0 && (
+      {comp.enabled && comp.standings.length > 0 && (
         <button className="btn btn-ghost btn-sm comp-ranking-btn" onClick={onShowRanking}>
           <ListOrdered size={15} /> Classifica
         </button>
@@ -178,10 +178,26 @@ export function Confetti({ count = 140 }: { count?: number }) {
   );
 }
 
-export function WinnerScreen({ standings, onClose }: { standings: Standing[]; onClose: () => void }) {
+export function WinnerScreen({
+  standings,
+  onClose,
+  autoClose = 0,
+}: {
+  standings: Standing[];
+  onClose: () => void;
+  /** secondi dopo i quali si chiude da sola (0: resta finché non si chiude) */
+  autoClose?: number;
+}) {
   const winner = standings[0];
   const [full, setFull] = useState(false);
   useEffect(() => cheer(), []);
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
+  useEffect(() => {
+    if (!autoClose) return;
+    const t = window.setTimeout(() => closeRef.current(), autoClose * 1000);
+    return () => window.clearTimeout(t);
+  }, [autoClose]);
   const confetti = useMemo(
     () =>
       Array.from({ length: 140 }, (_, i) => ({

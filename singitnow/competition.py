@@ -2,12 +2,12 @@
 
 - Si attiva con l'interruttore «Competizione» (sotto Karaoke/Jukebox, sul PC o dai Settaggi
   degli amministratori). L'impostazione resta salvata.
-- Una sessione inizia quando parte un brano a musica ferma e finisce quando la musica si ferma del
-  tutto (coda finita, Stop, X). A inizio di una nuova sessione la classifica si svuota; quella
-  della sessione appena finita resta consultabile fino ad allora.
+- La sessione è la serata: inizia quando parte il primo brano e finisce quando un amministratore
+  conclude la serata (vedi evening.py), non quando la musica si ferma. A inizio di una nuova
+  serata la classifica si svuota; quella della serata appena finita resta consultabile fino ad allora.
 - Contano solo i brani con un cantante: chi canta più brani ha come punteggio la media aritmetica
   dei suoi voti (non la somma).
-- A fine sessione la TV festeggia il vincitore (evento "competition_end").
+- A fine serata la TV festeggia il vincitore (evento "competition_end").
 """
 
 from __future__ import annotations
@@ -19,13 +19,11 @@ import time
 from . import config, party
 from .events import hub
 
-END_DELAY = 2.0  # s a musica ferma prima di chiudere la sessione (un voto può arrivare un attimo dopo)
 
 _lock = threading.RLock()
 _results: list[dict] = []  # {singer, song_id, title, score, t}
 _active = False  # sessione in corso
 _excluded = ""  # brano (voce della playlist) in corso quando la competizione è stata accesa: non conta
-_end_timer: threading.Timer | None = None
 _bonus: dict[str, dict] = {}  # quiz musicale: casefold(nome) -> {"name", "points"} (sessione in corso)
 
 QUIZ_POINTS = 2  # punti aggiunti alla media per ogni risposta esatta al quiz
@@ -112,13 +110,14 @@ def _publish() -> None:
 
 def _dump() -> dict:
     with _lock:
-        return {"results": list(_results), "bonus": dict(_bonus)}
+        return {"results": list(_results), "bonus": dict(_bonus), "active": _active}
 
 
 def _load(data: dict) -> None:
-    """Riavvio a metà serata: la classifica della sessione resta consultabile (la musica è ferma,
-    quindi la sessione è finita: il prossimo brano ne comincia una nuova)."""
+    """Riavvio a metà serata: la classifica resta, e la serata (se non era conclusa) continua."""
+    global _active
     with _lock:
+        _active = bool(data.get("active"))
         _results[:] = [r for r in data.get("results", []) if isinstance(r, dict) and r.get("singer")]
         _bonus.clear()
         _bonus.update({k: v for k, v in (data.get("bonus") or {}).items() if isinstance(v, dict)})
@@ -142,29 +141,22 @@ def add_score(singer: str, song_id: str, title: str, score: int, entry_id: str =
 
 
 def on_playing(playing: bool) -> None:
-    """Chiamata a ogni cambio della playlist: apre e chiude le sessioni."""
-    global _active, _end_timer, _excluded
+    """Chiamata a ogni cambio della playlist: il primo brano dopo una serata conclusa ne apre una
+    nuova. Quando la musica si ferma la serata continua: la chiude un amministratore (finish)."""
+    global _active, _excluded
     with _lock:
-        if playing:
-            if _end_timer:
-                _end_timer.cancel()  # la musica è ripartita subito: stessa sessione
-                _end_timer = None
-            if not _active:
-                _active = True
-                _excluded = ""
-                _results.clear()  # nuova sessione: classifica vuota
-                _bonus.clear()
-                _publish()
-        elif _active and _end_timer is None:
-            _end_timer = threading.Timer(END_DELAY, _finish)
-            _end_timer.daemon = True
-            _end_timer.start()
+        if playing and not _active:
+            _active = True
+            _excluded = ""
+            _results.clear()  # nuova serata: classifica vuota
+            _bonus.clear()
+            _publish()
 
 
-def _finish() -> None:
-    global _active, _end_timer
+def finish() -> None:
+    """Fine della serata: la classifica resta consultabile e la TV festeggia il vincitore."""
+    global _active
     with _lock:
-        _end_timer = None
         if not _active:
             return
         _active = False

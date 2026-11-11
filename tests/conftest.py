@@ -16,7 +16,7 @@ os.environ["SINGITNOW_DATA"] = str(_DATA)
 os.environ.pop("SINGITNOW_ADMIN_PASSWORD", None)
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from singitnow import competition, config, party  # noqa: E402
+from singitnow import competition, config, evening, party  # noqa: E402
 from singitnow.library import READY, Song, library  # noqa: E402
 
 
@@ -32,9 +32,7 @@ def clean_state():
         competition._bonus.clear()
         competition._active = False
         competition._excluded = ""
-        if competition._end_timer:
-            competition._end_timer.cancel()
-        competition._end_timer = None
+    evening.reset()
     with party._lock:
         if party._timer:
             party._timer.cancel()

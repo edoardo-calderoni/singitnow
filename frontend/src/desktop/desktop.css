@@ -4328,3 +4328,96 @@ body {
 .timing-editor .modal-back {
   z-index: 96; /* «Testo intero» sopra l'editor */
 }
+
+/* ---------- Fine della serata: pulsante nella barra laterale, avviso sulla TV */
+.evening-btn {
+  display: flex;
+  width: fit-content;
+  margin: 8px auto 0;
+}
+.evening-box {
+  margin-top: 12px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(255, 61, 154, 0.1);
+  border: 1px solid rgba(255, 61, 154, 0.35);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+}
+.evening-box-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 700;
+  color: var(--pink);
+}
+.evening-box-last {
+  color: var(--text-2, #b4b2cc);
+  line-height: 1.35;
+}
+.evening-box .btn {
+  align-self: flex-start;
+}
+.evening-notice {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: grid;
+  place-items: center;
+  background: rgba(6, 6, 12, 0.72);
+  backdrop-filter: blur(6px);
+  animation: evening-in 0.5s ease-out;
+  cursor: pointer;
+}
+.evening-notice-card {
+  text-align: center;
+  padding: 3vw 5vw;
+  border-radius: 2vw;
+  background: linear-gradient(160deg, rgba(255, 61, 154, 0.22), rgba(139, 92, 246, 0.18) 55%, rgba(34, 211, 238, 0.16));
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  box-shadow: 0 2vw 6vw rgba(0, 0, 0, 0.5);
+  max-width: 70vw;
+  animation: evening-pop 0.6s cubic-bezier(0.2, 1.4, 0.4, 1);
+}
+.evening-notice-flag {
+  font-size: clamp(48px, 6vw, 140px);
+  line-height: 1;
+}
+.evening-notice-kicker {
+  margin-top: 1vw;
+  font-family: var(--font-display);
+  font-size: clamp(22px, 2.4vw, 60px);
+  font-weight: 700;
+  color: var(--pink);
+}
+.evening-notice-title {
+  margin-top: 0.6vw;
+  font-family: var(--font-display);
+  font-size: clamp(34px, 4.4vw, 110px);
+  font-weight: 800;
+  line-height: 1.1;
+  color: #fff;
+}
+.evening-notice-singer {
+  margin-top: 0.4vw;
+  font-size: clamp(18px, 1.8vw, 44px);
+  color: rgba(255, 255, 255, 0.8);
+}
+.evening-notice-hint {
+  margin-top: 1.4vw;
+  font-size: clamp(16px, 1.4vw, 36px);
+  color: rgba(255, 255, 255, 0.65);
+}
+@keyframes evening-in {
+  from {
+    opacity: 0;
+  }
+}
+@keyframes evening-pop {
+  from {
+    transform: scale(0.85);
+    opacity: 0;
+  }
+}

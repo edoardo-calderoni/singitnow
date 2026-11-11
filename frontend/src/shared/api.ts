@@ -424,6 +424,9 @@ export const api = {
     req<Profile>("GET", `/api/profile?first=${encodeURIComponent(first)}&last=${encodeURIComponent(last)}`),
   statsQr: () => req<{ url: string; qr_svg: string }>("GET", "/api/stats/qr"),
   showStats: () => req("POST", "/api/admin/stats/show"),
+  /** «Concludi la serata»: il prossimo brano è l'ultimo. */
+  closeEvening: () => req("POST", "/api/admin/evening/close"),
+  cancelEveningClose: () => req("POST", "/api/admin/evening/cancel"),
   setCompetition: (enabled: boolean, name = "") => req<Competition>("POST", "/api/admin/competition", { enabled, name }),
   showRanking: () => req("POST", "/api/admin/competition/show"),
   fullscreen: () => req("POST", "/api/admin/fullscreen"),

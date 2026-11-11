@@ -421,7 +421,7 @@ export function CompetitionCard({ inline }: { inline?: boolean }) {
       </label>
       <div className="m-mode-hint">
         {comp.enabled
-          ? "Conta la media dei voti d'intonazione di ciascuno; a fine playlist si premia il vincitore"
+          ? "Conta la media dei voti d'intonazione di ciascuno; quando concludi la serata si premia il vincitore"
           : "Attivala per una classifica fra chi canta in questa sessione"}
       </div>
       {comp.enabled && (

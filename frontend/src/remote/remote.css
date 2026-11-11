@@ -2493,3 +2493,28 @@ body {
   font-size: 13px;
   color: var(--text-2);
 }
+
+/* Fine della serata: striscia per tutti e comandi degli amministratori */
+.m-evening-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  margin-bottom: 10px;
+  border-radius: 14px;
+  background: linear-gradient(120deg, rgba(255, 61, 154, 0.22), rgba(139, 92, 246, 0.18));
+  border: 1px solid rgba(255, 61, 154, 0.4);
+  font-size: 14px;
+}
+.m-evening-banner .muted {
+  font-size: 12.5px;
+}
+.m-evening-flag {
+  font-size: 26px;
+  line-height: 1;
+}
+.m-evening-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+}

@@ -8,7 +8,7 @@ import time
 import uuid
 from dataclasses import asdict, dataclass, field
 
-from . import competition, config, keyfit, mode, people, quiz, stats
+from . import competition, config, evening, keyfit, mode, people, quiz, stats
 from .events import hub
 from .library import READY, Song, library
 
@@ -79,8 +79,9 @@ class Playlist:
         self._file.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
 
     def _autostart(self) -> Entry | None:
-        """Se non sta suonando niente, la prima richiesta in coda parte subito (da chiamare col lock)."""
-        if self.now_playing is not None or not self._entries:
+        """Se non sta suonando niente, la prima richiesta in coda parte subito (da chiamare col lock).
+        Non dopo una serata conclusa: la serata nuova la fa partire un amministratore."""
+        if self.now_playing is not None or not self._entries or evening.ended():
             return None
         entry = self._entries.pop(0)
         entry.auto = True
@@ -100,6 +101,8 @@ class Playlist:
         if e is None or e.id == self._marked:
             return
         self._marked = e.id
+        # dopo una serata conclusa ne comincia una nuova; in chiusura si aggiorna l'ultimo brano
+        evening.on_started(e.id, self.upcoming())
         song = library.update(e.song_id, played_at=time.time())
         if song and not mode.is_jukebox():  # in Jukebox e DJ non si canta: niente esibizione
             stats.started(e.id, e.song_id, song.title, song.artist, e.singer, e.partner)
@@ -436,8 +439,23 @@ class Playlist:
             self._entries.insert(new, self._entries.pop(idx))
             self._changed()
 
+    def upcoming(self) -> list[str]:
+        """Voci in coda pronte da suonare, in ordine."""
+        return [e.id for e in self._entries if library.get(e.song_id)]
+
     def play(self, entry_id: str | None = None) -> Entry | None:
-        """Avvia la voce indicata (o la prima in coda) togliendola dalla coda."""
+        """Avvia la voce indicata (o la prima in coda) togliendola dalla coda. Finito l'ultimo brano
+        della serata in chiusura non si va avanti: la musica si ferma e la serata si conclude."""
+        with self._lock:
+            if entry_id is None and self.now_playing and evening.is_last(self.now_playing.id):
+                self.now_playing = None
+                self._changed()
+                ended = True
+            else:
+                ended = False
+        if ended:
+            evening.finish()
+            return None
         with self._lock:
             if entry_id:
                 entry = next((e for e in self._entries if e.id == entry_id), None)
@@ -457,8 +475,11 @@ class Playlist:
 
     def stop(self) -> None:
         with self._lock:
+            last = self.now_playing is not None and evening.is_last(self.now_playing.id)
             self.now_playing = None
             self._changed()
+        if last:  # fermato l'ultimo brano della serata: si conclude lo stesso
+            evening.finish()
 
     def remove_waiting(self, song_id: str, singer: str) -> None:
         """Annulla la prenotazione di un brano ancora in preparazione."""

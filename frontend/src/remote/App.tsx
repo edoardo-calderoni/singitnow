@@ -63,6 +63,8 @@ import { AdminPasswordCard, PlaylistSettingsCard, ScreenCard } from "./SettingsC
 import { DjElected, Turntable } from "./DjElected";
 import { ProfileHistory } from "./ProfileHistory";
 import { MyRecordings } from "./MyRecordings";
+import { EveningBanner, EveningCard } from "./Evening";
+import { useEvening } from "../shared/evening";
 import { PlaylistImportSheet } from "./PlaylistImport";
 import { onlyPlaylist, playlistId } from "../shared/ytPlaylist";
 import { EveningStatsEntry, EveningStatsSheet, openedFromQr } from "./EveningStats";
@@ -131,12 +133,33 @@ export function App() {
       setToast(`Registrazione di «${data.title}» salvata: la trovi nel tuo profilo`);
     if (event === "users") setUsers(Array.isArray(data) ? data : []); // chi è collegato dal telefono
     if (event === "people") setPeople(Array.isArray(data) ? data : []); // nomi nella festa (omonimi)
+    // serata conclusa da un amministratore: il riepilogo della serata si apre da solo
+    if (event === "evening_end") {
+      setToast("🏁 Serata conclusa! Ecco com'è andata");
+      if (data?.stats) setStatsFromQr(true);
+    }
     if (event === "score" && data.singer && data.singer === nameRef.current)
       setToast(`🎤 Intonazione: ${data.score}/100${data.position ? ` · ${data.position}° posto` : ""}`);
   });
   useEffect(() => {
     if (connected) api.scores().then((r) => setRanking(r.ranking)).catch(() => {});
   }, [connected]);
+  // «Concludi la serata»: avviso a comparsa in qualunque scheda (la striscia è nella scheda Live)
+  const evening = useEvening();
+  const eveningAnnounced = useRef<string | null>(null);
+  useEffect(() => {
+    if (!evening.closing || !evening.lastEntry) {
+      eveningAnnounced.current = null;
+      return;
+    }
+    if (eveningAnnounced.current) return;
+    eveningAnnounced.current = evening.lastEntry;
+    setToast(
+      playlist.now_playing?.id === evening.lastEntry
+        ? "🏁 Questo è l'ultimo brano della serata!"
+        : "🏁 Il prossimo è l'ultimo brano della serata!",
+    );
+  }, [evening.closing, evening.lastEntry, playlist.now_playing?.id]);
   // utenti collegati: all'avvio e a ogni riconnessione, poi li aggiorna l'evento "users"
   const [users, setUsers] = useState<string[]>([]);
   useEffect(() => {
@@ -372,6 +395,7 @@ export function App() {
         {tab === "settings" && isAdmin && (
           <div className="m-section">
             <ModeSwitch />
+            <EveningCard playlist={playlist} />
             <PlaylistSettingsCard />
             <ScreenCard />
             <MicCard />
@@ -737,6 +761,7 @@ function QueueTab({
   return (
     <div className="m-section">
       {/* il DJ aggiunge tutti i brani: niente «Il tuo brano è il prossimo» */}
+      <EveningBanner playlist={playlist} />
       {!iAmDj && <TurnBanner turn={turnFor(name, playlist, player)} onAdd={goLibrary} onLyrics={goLyrics} />}
       {!iAmDj && <MyKeyCard name={name} playlist={playlist} />}
       {!jukebox && turnFor(name, playlist, player) && <EnableVibration />}

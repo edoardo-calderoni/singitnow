@@ -40,22 +40,21 @@ def test_accesa_a_playlist_in_corsa_esclude_il_brano_che_suona():
     assert comp.add_score("Anna", "a", "A", 60, entry_id="e2") == 1
 
 
-def test_nuova_sessione_svuota_la_classifica():
+def test_la_classifica_resta_finche_non_finisce_la_serata():
     comp.on_playing(True)
     comp.add_score("Anna", "a", "A", 90)
-    comp._finish()  # la musica si è fermata del tutto
-    assert comp.standings()  # resta consultabile a sessione finita
+    comp.on_playing(False)  # la musica si ferma (coda finita, Stop): la serata continua
+    comp.on_playing(True)
+    assert len(comp.standings()) == 1 and comp._active
+
+
+def test_nuova_serata_svuota_la_classifica():
+    comp.on_playing(True)
+    comp.add_score("Anna", "a", "A", 90)
+    comp.finish()  # serata conclusa da un amministratore
+    assert comp.standings()  # resta consultabile a serata finita
     comp.on_playing(True)
     assert comp.standings() == []
-
-
-def test_musica_che_riparte_subito_e_la_stessa_sessione():
-    comp.on_playing(True)
-    comp.add_score("Anna", "a", "A", 90)
-    comp.on_playing(False)
-    comp.on_playing(True)  # prima di END_DELAY: il timer si annulla
-    assert comp._end_timer is None
-    assert len(comp.standings()) == 1
 
 
 def test_cambio_nome():

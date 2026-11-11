@@ -32,6 +32,7 @@ import { ResultItem, showResults } from "./ResultsPanel";
 import { useCompetition } from "../shared/competition";
 import { MicPitch, singingMics } from "./mic";
 import { MIN_RECORD_SECONDS, PerformanceRecorder } from "./recorder";
+import { isEveningLast } from "../shared/evening";
 import { useSettings } from "../shared/settings";
 import { setApplauseVolume } from "./Applause";
 import { MIC_NAMES, micLabel, useMics, useMicSetter } from "../shared/mics";
@@ -536,7 +537,7 @@ export function Player({ entry, next, waitingNext, onClose, onNext, mini = false
           items,
           title: song.title,
           artist: song.artist,
-          isLast: () => !nextRef.current && !waitingRef.current,
+          isLast: () => isEveningLast(entry.id), // ultimo brano della serata in chiusura
           onLeave: () => finishRef.current(),
         });
         return;

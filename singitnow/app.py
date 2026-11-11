@@ -18,7 +18,8 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from . import (
-    __version__, admin, audio, avatars, backup, competition, config, halloffame, mics, mode, names, party, people,
+    __version__, admin, audio, avatars, backup, competition, config, evening, halloffame, mics, mode, names, party,
+    people,
     keyfit, lyrics, profiles, quiz,
     recordings, recvideo, stats, storage, wifi, youtube,
 )
@@ -637,6 +638,8 @@ def play(req: PlayReq):
         playlist.play_song(req.song_id, req.singer)
     else:
         if not playlist.play(req.entry_id):
+            if evening.ended():  # era l'ultimo brano: la serata si è appena conclusa
+                return playlist.snapshot()
             raise HTTPException(404, "Coda vuota")
     return playlist.snapshot()
 
@@ -1374,6 +1377,21 @@ def set_competition(req: CompetitionReq, x_admin_token: str | None = Header(defa
     return out
 
 
+@app.post("/api/admin/evening/close", dependencies=[Depends(admin.require_control)])
+def close_evening():
+    """«Concludi la serata»: il prossimo brano è l'ultimo (o quello che suona, a coda vuota); finito
+    quello la TV mostra vincitore e statistiche. Senza musica né coda si chiude subito."""
+    now = playlist.now_playing
+    evening.close(now.id if now else None, playlist.upcoming())
+    return evening.public()
+
+
+@app.post("/api/admin/evening/cancel", dependencies=[Depends(admin.require_control)])
+def cancel_evening_close():
+    evening.cancel()
+    return evening.public()
+
+
 @app.post("/api/admin/competition/show", dependencies=[Depends(admin.require_control)])
 def show_competition():
     """Classifica in tempo reale per qualche secondo sulla TV (stessa durata del QR code)."""
@@ -1456,6 +1474,7 @@ async def ws(websocket: WebSocket):
         await websocket.send_text(json.dumps({"event": "mode", "data": mode.public()}))
         await websocket.send_text(json.dumps({"event": "settings", "data": mode.settings_public()}))
         await websocket.send_text(json.dumps({"event": "competition", "data": competition.public()}, ensure_ascii=False))
+        await websocket.send_text(json.dumps({"event": "evening", "data": evening.public()}))
         while True:
             msg = await websocket.receive_text()  # "ping" (keep-alive) oppure {"hello": "<nome>"}
             if msg == "ping":

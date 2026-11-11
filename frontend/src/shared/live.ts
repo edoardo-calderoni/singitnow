@@ -2,6 +2,7 @@ import { setQuiz } from "./quiz";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { api, PlayerState, PlaylistState, Song } from "./api";
 import { setAvatars } from "./Avatar";
+import { setEvening } from "./evening";
 import { setMode } from "./mode";
 import { setSettings } from "./settings";
 import { publishMics } from "./mics";
@@ -109,6 +110,8 @@ export function useLive(onEvent?: Listener) {
           setSettings(data);
         } else if (event === "mode") {
           setMode(data);
+        } else if (event === "evening") {
+          setEvening(data);
         } else if (event === "avatars") {
           setAvatars(data);
         } else if (event === "voice") {

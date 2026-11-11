@@ -19,6 +19,8 @@ import { Splash, useSplash } from "../shared/Splash";
 import { CompetitionSwitch, RankingCorner, RankingDialog, WinnerScreen } from "./Competition";
 import { Participants } from "./Participants";
 import { EveningStatsPanel, StatsButton } from "./EveningStats";
+import { EveningButton, EveningNotice } from "./Evening";
+import { useEvening } from "../shared/evening";
 import { SettingsButton } from "./Settings";
 import { QuizOverlay } from "./Quiz";
 import { useQuiz } from "../shared/quiz";
@@ -28,6 +30,8 @@ import { RejectedDialog } from "./Rejected";
 import type { ImportRejected } from "../shared/api";
 
 type Tab = "library" | "search";
+
+const WINNER_SECONDS = 20; // a fine serata il vincitore resta tanto, poi arrivano le statistiche
 
 export function App() {
   const requests = useRequests();
@@ -51,6 +55,8 @@ export function App() {
     else if (event === "duet" && data?.kind === "accepted") requests.pushDuet(data.from, data.to, data.song ?? null);
     // il vincitore appena festeggiato nel pannello di fine serata non si mostra due volte
     else if (event === "competition_end" && !winnerJustCelebrated()) setWinner(data?.standings ?? null);
+    // serata conclusa: dopo il vincitore (o subito) le statistiche della serata
+    else if (event === "evening_end" && data?.stats) setFinale(true);
   });
   const [tab, setTab] = useState<Tab>("library");
   const [info, setInfo] = useState<{ remote_url: string; qr_svg: string } | null>(null);
@@ -102,6 +108,8 @@ export function App() {
     rankingTimer.current = window.setTimeout(() => setRankingShown(null), seconds * 1000);
   }
   const [winner, setWinner] = useState<Standing[] | null>(null);
+  const [finale, setFinale] = useState(false); // serata appena conclusa: statistiche in arrivo
+  const evening = useEvening();
   // partecipanti collegati dal telefono (pannello sotto il QR code): all'avvio e a ogni riconnessione
   // si chiede l'elenco, poi lo aggiorna l'evento "users"
   const [users, setUsers] = useState<string[]>([]);
@@ -221,6 +229,13 @@ export function App() {
   const queued = playlist.entries;
   const totalDuration = queued.reduce((t, e) => t + (e.song?.duration ?? 0), 0);
 
+  // fine serata: chiuso il vincitore (e il pannello dei voti) si aprono le statistiche
+  useEffect(() => {
+    if (finale && !winner && !resultsOpen && !nowSong) {
+      setFinale(false);
+      setStatsOpen(true);
+    }
+  }, [finale, winner, resultsOpen, nowSong]);
   return (
     <div className="app">
       {/* ------------------------------------------------ sidebar */}
@@ -241,6 +256,7 @@ export function App() {
           <DjPicker users={users} onError={setToast} />
           <CompetitionSwitch onShowRanking={() => setRankingOpen(true)} />
           {!jukebox && <StatsButton onClick={() => setStatsOpen(true)} />}
+          <EveningButton playlist={playlist} songs={songs} onError={setToast} />
         </div>
 
         {/* QR code piccolo per entrare e, sotto, chi è collegato dal telefono in questo momento;
@@ -384,8 +400,10 @@ export function App() {
           <Player
             key={e.id}
             entry={e}
-            next={nextEntry}
-            waitingNext={waitingNext}
+            // ultimo brano della serata: dopo non c'è niente (niente mix né quiz), a fine brano si
+            // ferma e il PC conclude la serata
+            next={evening.closing && evening.lastEntry === e.id ? undefined : nextEntry}
+            waitingNext={evening.closing && evening.lastEntry === e.id ? undefined : waitingNext}
             mixIn={e.id === mixInId}
             onClose={() => safe(() => api.stop())}
             onNext={() => afterSong(e.id)}
@@ -446,7 +464,10 @@ export function App() {
       <BackgroundMusic active={!splash && !now && !resultsOpen && !winner && !timingFor} />
       {splash && <Splash onDone={splashDone} />}
       {rankingShown !== null && <RankingCorner seconds={rankingShown} onClose={() => setRankingShown(null)} />}
-      {winner && !nowSong && <WinnerScreen standings={winner} onClose={() => setWinner(null)} />}
+      {winner && !nowSong && (
+        <WinnerScreen standings={winner} autoClose={finale ? WINNER_SECONDS : 0} onClose={() => setWinner(null)} />
+      )}
+      <EveningNotice playlist={playlist} songs={songs} />
       {rankingOpen && <RankingDialog onClose={() => setRankingOpen(false)} />}
       {statsOpen && <EveningStatsPanel onClose={closeStats} />}
       {qrShown && info && (

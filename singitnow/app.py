@@ -20,7 +20,7 @@ from pydantic import BaseModel
 from . import (
     __version__, admin, audio, avatars, backup, competition, config, halloffame, mics, mode, names, party, people,
     keyfit, lyrics, profiles, quiz,
-    recordings, stats, storage, wifi, youtube,
+    recordings, recvideo, stats, storage, wifi, youtube,
 )
 from .events import hub
 from .library import READY, library
@@ -1240,8 +1240,15 @@ def storage_clear_work():
 
 # ------------------------------------------------------------------ registrazioni delle esibizioni
 @app.post("/api/recordings", dependencies=[Depends(admin.require_control)])
-async def upload_recording(request: Request, song_id: str, seconds: float, singer: str = "", partner: str = ""):
-    """Il player della TV manda la registrazione dell'esibizione appena finita (WebM/Opus)."""
+async def upload_recording(
+    request: Request, song_id: str, seconds: float, singer: str = "", partner: str = "", marks: str = ""
+):
+    """Il player della TV manda la registrazione dell'esibizione appena finita (WebM/Opus).
+    marks: JSON [[secondi della registrazione, secondi del brano], ...] (avvio e salti)."""
+    try:
+        marks_list = json.loads(marks) if marks else None
+    except ValueError:
+        marks_list = None
     song = library.get(song_id)
     performers = []
     for name in (singer, partner):
@@ -1254,7 +1261,7 @@ async def upload_recording(request: Request, song_id: str, seconds: float, singe
     try:
         info = recordings.save(await request.body(), {
             "song_id": song_id, "title": song.title if song else "", "artist": song.artist if song else "",
-            "seconds": seconds, "performers": performers,
+            "seconds": seconds, "performers": performers, "marks": marks_list,
         })
     except ValueError as e:
         raise HTTPException(400, str(e))
@@ -1276,6 +1283,30 @@ def recording_file(rid: str, first: str, last: str = ""):
         raise HTTPException(404, "Registrazione non trovata")
     path, name = found
     return FileResponse(path, filename=name)
+
+
+@app.post("/api/recordings/{rid}/video")
+def make_recording_video(rid: str, kind: str, first: str, last: str = ""):
+    """Prepara il video verticale dell'esibizione (story: il ritornello, full: tutta)."""
+    if kind not in recvideo.KINDS:
+        raise HTTPException(400, "Formato non valido")
+    if not recordings.owned(rid, first, last):
+        raise HTTPException(404, "Registrazione non trovata")
+    if not (recordings.folder(rid) / "rec.m4a").exists():
+        raise HTTPException(409, "La registrazione è ancora in preparazione")
+    return {"state": recvideo.start(rid, kind)}
+
+
+@app.get("/api/recordings/{rid}/video")
+def recording_video(rid: str, kind: str, first: str, last: str = ""):
+    if kind not in recvideo.KINDS or not recordings.owned(rid, first, last):
+        raise HTTPException(404, "Video non trovato")
+    path = recordings.folder(rid) / f"video-{kind}.mp4"
+    if not path.exists():
+        raise HTTPException(404, "Video non ancora pronto")
+    found = recordings.file(rid, first, last)
+    name = (found[1].rsplit(".", 1)[0] if found else "esibizione") + (" (storia)" if kind == "story" else "") + ".mp4"
+    return FileResponse(path, media_type="video/mp4", filename=name)
 
 
 @app.delete("/api/recordings/{rid}")

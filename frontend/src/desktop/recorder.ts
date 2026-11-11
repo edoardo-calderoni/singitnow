@@ -20,6 +20,10 @@ export class PerformanceRecorder {
   private startedAt = 0; // performance.now() all'avvio
   private pausedAt = 0;
   private pausedFor = 0;
+  private delay = 0; // ritardo della base nella registrazione (vedi start)
+  /** [secondi della registrazione, secondi del brano] all'avvio e dopo ogni salto: il video con il
+   *  testo li usa per restare a tempo. */
+  readonly marks: [number, number][] = [];
 
   constructor(private engine: KaraokeEngine) {}
 
@@ -36,6 +40,7 @@ export class PerformanceRecorder {
     const dest = ctx.createMediaStreamDestination();
     const delay = ctx.createDelay(1);
     delay.delayTime.value = Math.min(0.9, this.engine.outputLatency + 0.03);
+    this.delay = delay.delayTime.value;
     const music = ctx.createGain();
     music.gain.value = 0.8; // la voce deve sentirsi sopra la base
     this.engine.tap(delay);
@@ -69,6 +74,18 @@ export class PerformanceRecorder {
       this.recorder.resume();
       this.pausedFor += performance.now() - this.pausedAt;
     }
+  }
+
+  /**
+   * Da chiamare di continuo con la posizione del brano: annota dove la registrazione e il brano
+   * smettono di andare di pari passo (avvio, salto avanti o indietro).
+   */
+  track(songTime: number) {
+    if (this.recorder?.state !== "recording") return;
+    const rec = this.seconds;
+    const song = songTime - this.delay; // la base entra nella registrazione con questo ritardo
+    const last = this.marks[this.marks.length - 1];
+    if (!last || Math.abs(song - (last[1] + rec - last[0])) > 0.3) this.marks.push([rec, song]);
   }
 
   /** Secondi registrati (pause escluse). */

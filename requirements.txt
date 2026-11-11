@@ -15,3 +15,4 @@ pycaw>=20240210; sys_platform == "win32"
 sounddevice>=0.5; sys_platform == "win32"
 cutlet>=0.5
 unidic-lite>=1.0.8
+pillow>=10.0  # immagini del video delle esibizioni

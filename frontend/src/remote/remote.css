@@ -2131,6 +2131,34 @@ body {
 .m-recordings .muted {
   font-size: 12px;
 }
+.m-recordings li {
+  flex-wrap: wrap;
+}
+.m-recordings li > .m-rec-videos {
+  flex: 1 0 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 4px 0 2px;
+}
+.m-rec-video {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.05);
+}
+.m-rec-video a.btn {
+  text-decoration: none;
+}
+.m-rec-video > div {
+  flex: 1;
+  min-width: 0;
+}
+.m-recordings .icon-btn.on {
+  color: var(--pink);
+}
 
 /* Amministratori: importazione di una playlist di YouTube */
 .m-plimport-hint {

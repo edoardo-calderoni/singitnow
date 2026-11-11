@@ -192,8 +192,14 @@ export interface Recording {
   seconds: number;
   names: string[];
   ready: boolean; // convertita in M4A
+  videos?: Partial<Record<VideoKind, VideoState>>; // video verticali con il testo
 }
 
+/** Video verticale dell'esibizione: «story» il ritornello (60 s), «full» tutta. */
+export type VideoKind = "story" | "full";
+export type VideoState = "" | "working" | "ready" | "error";
+export const recordingVideoUrl = (id: string, kind: VideoKind, first: string, last: string) =>
+  `/api/recordings/${id}/video?kind=${kind}&first=${encodeURIComponent(first)}&last=${encodeURIComponent(last)}`;
 /** Indirizzo per scaricare una registrazione. */
 export const recordingUrl = (id: string, first: string, last: string) =>
   `/api/recordings/${id}/file?first=${encodeURIComponent(first)}&last=${encodeURIComponent(last)}`;
@@ -384,8 +390,21 @@ export const api = {
   showQr: () => req("POST", "/api/admin/qr"),
   competition: () => req<Competition>("GET", "/api/competition"),
   stats: () => req<import("./stats").EveningStats>("GET", "/api/stats"),
-  uploadRecording: async (blob: Blob, song_id: string, seconds: number, singer: string, partner: string) => {
-    const q = new URLSearchParams({ song_id, seconds: String(Math.round(seconds)), singer, partner });
+  uploadRecording: async (
+    blob: Blob,
+    song_id: string,
+    seconds: number,
+    singer: string,
+    partner: string,
+    marks: [number, number][] = [],
+  ) => {
+    const q = new URLSearchParams({
+      song_id,
+      seconds: String(Math.round(seconds)),
+      singer,
+      partner,
+      marks: JSON.stringify(marks.slice(0, 500).map(([r, s]) => [+r.toFixed(3), +s.toFixed(3)])),
+    });
     const res = await fetchPC(`/api/recordings?${q}`, { method: "POST", headers: authHeaders(undefined), body: blob }, 120000);
     if (!res.ok) throw new Error((await res.json().catch(() => null))?.detail ?? "Registrazione non salvata");
   },
@@ -393,6 +412,11 @@ export const api = {
     req<{ recordings: Recording[]; keep_days: number }>(
       "GET",
       `/api/recordings?first=${encodeURIComponent(first)}&last=${encodeURIComponent(last)}`,
+    ),
+  recordingVideo: (id: string, kind: VideoKind, first: string, last: string) =>
+    req<{ state: VideoState }>(
+      "POST",
+      `/api/recordings/${id}/video?kind=${kind}&first=${encodeURIComponent(first)}&last=${encodeURIComponent(last)}`,
     ),
   deleteRecording: (id: string, first: string, last: string) =>
     req("DELETE", `/api/recordings/${id}?first=${encodeURIComponent(first)}&last=${encodeURIComponent(last)}`),

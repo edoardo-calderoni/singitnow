@@ -37,6 +37,21 @@ def _key(first: str, last: str) -> str:
     return f"{' '.join(first.split()).casefold()}|{' '.join(last.split()).casefold()}"
 
 
+def folder(rid: str):
+    """Cartella della registrazione (rid già controllato dal chiamante o da `owned`)."""
+    return _dir() / rid
+
+
+def meta(rid: str) -> dict | None:
+    return _meta(rid) if re.fullmatch(r"[\w-]+", rid) else None
+
+
+def owned(rid: str, first: str, last: str) -> bool:
+    """La registrazione esiste ed è di questa persona."""
+    m = meta(rid)
+    return bool(m and _key(first, last) in m.get("keys", []))
+
+
 def _meta(rid: str) -> dict | None:
     try:
         return json.loads((_dir() / rid / "meta.json").read_text(encoding="utf-8"))
@@ -64,10 +79,25 @@ def save(data: bytes, meta: dict) -> dict:
         "seconds": round(float(meta.get("seconds") or 0)),
         "keys": [_key(f, l) for f, l, _ in meta.get("performers", []) if f],
         "names": [n for _, _, n in meta.get("performers", []) if n],
+        # [secondi della registrazione, secondi del brano] all'avvio e dopo ogni salto: servono al
+        # video con il testo per restare a tempo
+        "marks": _marks(meta.get("marks")),
     }
     (d / "meta.json").write_text(json.dumps(info, ensure_ascii=False), encoding="utf-8")
     threading.Thread(target=_convert, args=(rid,), name="registrazione", daemon=True).start()
     return info
+
+
+def _marks(raw) -> list[list[float]]:
+    out = []
+    for m in raw if isinstance(raw, list) else []:
+        try:
+            r, t = float(m[0]), float(m[1])
+        except (TypeError, ValueError, IndexError):
+            continue
+        if r >= 0 and t >= -5 and len(out) < 500:
+            out.append([round(r, 3), round(t, 3)])
+    return out or [[0.0, 0.0]]
 
 
 def _convert(rid: str) -> None:
@@ -88,7 +118,10 @@ def for_person(first: str, last: str) -> list[dict]:
     for d in _dir().iterdir():
         m = _meta(d.name) if d.is_dir() else None
         if m and k in m.get("keys", []):
-            out.append(m | {"ready": (d / "rec.m4a").exists()})
+            from . import recvideo
+
+            videos = {k: recvideo.state(d.name, k) for k in recvideo.KINDS}
+            out.append(m | {"ready": (d / "rec.m4a").exists(), "videos": videos})
     return sorted(out, key=lambda m: -m["t"])
 
 

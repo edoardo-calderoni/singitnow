@@ -479,7 +479,7 @@ export function Player({ entry, next, waitingNext, onClose, onNext, mini = false
     const { songId, singer, partner } = recInfo.current;
     rec
       .stop()
-      .then((blob) => blob && api.uploadRecording(blob, songId, seconds, singer, partner))
+      .then((blob) => blob && api.uploadRecording(blob, songId, seconds, singer, partner, rec.marks))
       .catch(() => {}); // una registrazione persa non deve disturbare la serata
   }, []);
   const finishRecRef = useRef(finishRecording);
@@ -585,6 +585,7 @@ export function Player({ entry, next, waitingNext, onClose, onNext, mini = false
         engine.setMasterVolume(volume);
         const loop = () => {
           setT(engine.currentTime);
+          recRef.current?.track(engine.currentTime); // registrazione e brano a tempo (video col testo)
           setPlaying(engine.playing); // anche quando lo avvia il mix in battuta
           raf = requestAnimationFrame(loop);
         };

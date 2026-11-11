@@ -80,3 +80,19 @@ def for_song(song_id: str) -> list[dict]:
         {"singer": names[_person(r)], "avatar": r.get("singer") or names[_person(r)], "score": r["score"], "t": r["t"]}
         for r in out
     ]
+
+
+def score_for(song_id: str, keys: list[str], t: float) -> int | None:
+    """Il voto preso in un'esibizione registrata: stesso brano, una delle persone che cantavano
+    (chiavi «nome|cognome» delle registrazioni) e dato entro pochi minuti dalla registrazione."""
+    if not song_id or not keys:
+        return None
+    best = None
+    for r in rows():
+        if r.get("song_id") != song_id or not (t - 600 <= float(r.get("t") or 0) <= t + 900):
+            continue
+        first, last = _person(r)
+        k = f"{' '.join(first.split()).casefold()}|{' '.join(last.split()).casefold()}"
+        if k in keys and (best is None or r["score"] > best):
+            best = int(r["score"])
+    return best

@@ -17,13 +17,16 @@ const SOUND_URL = "/sounds/applause.mp3";
 const FADE_IN = 0.12; // s
 const FADE_OUT = 0.5; // s
 const MAX_VOICES = 24; // applausi che suonano insieme al massimo
-const PER_PERSON = 1; // ognuno ha un solo applauso alla volta: i tocchi in più mentre suona si ignorano
-// L'effetto è registrato forte quanto una canzone: un applauso resta circa 15 dB sotto la musica.
-// Ogni persona in più che applaude insieme alza l'applauso di CROWD_STEP dB (crescita esponenziale
-// del volume), fino a CROWD_MAX dB in più: anche con tanta gente resta qualche dB sotto la musica.
-const VOICE_GAIN = 0.16;
+// Ognuno ha un solo suono d'applauso alla volta: i tocchi mentre suona fanno salire solo le bolle,
+// e il tocco dopo la fine del suono lo fa ripartire.
+const PER_PERSON = 1;
+// L'effetto (media -20 dB) è forte più o meno quanto una base: un applauso da solo resta circa
+// 10 dB sotto la musica, si sente bene ma non la copre. Ogni persona in più che applaude insieme
+// alza tutti gli applausi di CROWD_STEP dB, fino a CROWD_MAX dB in più: con tutta la sala che
+// applaude si arriva a 2-3 dB sotto la musica, mai sopra.
+const VOICE_GAIN = 0.45;
 const CROWD_STEP = 1.5; // dB per persona in più
-const CROWD_MAX = 12; // dB in più al massimo (circa 9 persone)
+const CROWD_MAX = 7.5; // dB in più al massimo (circa 6 persone)
 /** Guadagno complessivo con n applausi insieme: compensa la somma naturale (10·log10 n dB) per arrivare a quella voluta. */
 const crowdGain = (n: number) =>
   n <= 1 ? 1 : Math.pow(10, (Math.min(CROWD_STEP * (n - 1), CROWD_MAX) - 10 * Math.log10(n)) / 20);
@@ -117,29 +120,22 @@ export function cheer(people = 9) {
 export function useApplause() {
   const [bubbles, setBubbles] = useState<Bubble[]>([]);
   const seq = useRef(0);
-  // chi ha un applauso in volo: finché la sua bolla non è finita i suoi nuovi tocchi si ignorano
-  // (niente coda né sovrapposizioni per la stessa persona; persone diverse invece si sovrappongono)
-  const busy = useRef(new Set<string>());
   useEffect(preloadApplause, []);
 
+  // ogni tocco è una bolla (si può applaudire a raffica); il suono invece è uno alla volta per
+  // persona (vedi PER_PERSON): riparte al primo tocco dopo che è finito
   const push = useCallback((name: string) => {
-    if (busy.current.has(name)) return;
-    busy.current.add(name);
     playApplause(name);
     const b: Bubble = {
       key: ++seq.current,
       name,
       x: Math.random(),
       drift: (Math.random() - 0.5) * 5,
-      // un po' più lunga del suono (3,4 s ± 4%): finita la bolla è finito anche il suo applauso
-      dur: 3.6 + Math.random() * 0.3,
+      dur: 3.6 + Math.random() * 0.4,
       size: 0.85 + Math.random() * 0.35,
     };
     setBubbles((prev) => [...prev, b].slice(-MAX_BUBBLES));
-    window.setTimeout(() => {
-      setBubbles((prev) => prev.filter((x) => x.key !== b.key));
-      busy.current.delete(name);
-    }, b.dur * 1000 + 100);
+    window.setTimeout(() => setBubbles((prev) => prev.filter((x) => x.key !== b.key)), b.dur * 1000 + 100);
   }, []);
 
   return { bubbles, push };
@@ -164,6 +160,7 @@ export function ApplauseLayer({ bubbles }: { bubbles: Bubble[] }) {
         >
           <Avatar name={b.name} className="clap-avatar" />
           <span className="clap-icon">👏</span>
+          <span className="fly-name">{b.name}</span>
         </div>
       ))}
     </div>

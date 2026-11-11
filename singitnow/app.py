@@ -978,7 +978,7 @@ def admin_logout(x_admin_token: str | None = Header(default=None)):
 
 # ------------------------------------------------------------------ applausi
 _applause_log: dict[str, list[float]] = {}
-APPLAUSE_MAX = 8  # applausi per persona…
+APPLAUSE_MAX = 16  # applausi per persona…
 APPLAUSE_WINDOW = 2.0  # …ogni 2 secondi: oltre si ignorano (la TV non viene sommersa da un solo telefono)
 
 
@@ -1004,7 +1004,7 @@ def applause(req: ApplauseReq):
 # ------------------------------------------------------------------ reazioni
 REACTIONS = ("🔥", "😂", "😍", "🤘", "😮")
 _reaction_log: dict[str, list[float]] = {}
-REACTION_MAX = 5  # reazioni per persona…
+REACTION_MAX = 20  # reazioni per persona…
 REACTION_WINDOW = 3.0  # …ogni 3 secondi
 
 

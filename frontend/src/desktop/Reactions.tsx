@@ -55,6 +55,7 @@ export function ReactionLayer({ items }: { items: Flyer[] }) {
         >
           <span className="reaction-emoji">{f.emoji}</span>
           <Avatar name={f.name} className="reaction-avatar" />
+          <span className="fly-name">{f.name}</span>
         </div>
       ))}
     </div>

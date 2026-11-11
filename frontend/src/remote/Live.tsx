@@ -784,7 +784,7 @@ export function GetReadyAlert({
 }
 
 // ------------------------------------------------------------------ applausi
-const CLAP_MIN_GAP = 160; // ms tra due applausi dallo stesso telefono (il server ne accetta 8 ogni 2 s)
+const CLAP_MIN_GAP = 120; // ms tra due applausi dallo stesso telefono (il server ne accetta 16 ogni 2 s)
 
 /** Pulsante "Applaudi": ogni tocco manda un applauso alla TV (si può toccare a raffica). */
 export function ApplauseButton({ name, floating }: { name: string; floating?: boolean }) {
@@ -822,7 +822,7 @@ export function ApplauseButton({ name, floating }: { name: string; floating?: bo
 
 // ------------------------------------------------------------------ reazioni
 export const REACTIONS = ["🔥", "😂", "😍", "🤘", "😮"];
-const REACTION_MIN_GAP = 350; // ms fra due reazioni dallo stesso telefono (il server ne accetta 5 ogni 3 s)
+const REACTION_MIN_GAP = 150; // ms fra due reazioni dallo stesso telefono (il server ne accetta 20 ogni 3 s)
 
 /** Emoji da mandare a chi sta cantando: sulla TV volano con la propria foto. */
 export function ReactionBar({ name, floating }: { name: string; floating?: boolean }) {

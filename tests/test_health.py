@@ -77,8 +77,8 @@ def test_reazioni(add_song):
     appmod.playlist.now_playing = Entry("e1", "a", "Marco")
     try:
         assert c.post("/api/reaction", json={"name": "Anna", "emoji": "💩"}).json() == {"ok": False}
-        oks = [c.post("/api/reaction", json={"name": "Anna", "emoji": "🔥"}).json()["ok"] for _ in range(7)]
-        assert oks == [True] * 5 + [False] * 2  # al massimo 5 ogni 3 secondi
+        oks = [c.post("/api/reaction", json={"name": "Anna", "emoji": "🔥"}).json()["ok"] for _ in range(22)]
+        assert oks == [True] * 20 + [False] * 2  # a raffica, ma al massimo 20 ogni 3 secondi
     finally:
         appmod.playlist.now_playing = None
 

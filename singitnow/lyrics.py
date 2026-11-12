@@ -1017,8 +1017,9 @@ _HOP = 0.02  # risoluzione dell'inviluppo della voce (secondi)
 #     (breath_line_starts, after_gap);
 # 15: parola dentro la riga dopo una pausa: parte dove la voce torna (pause_word_starts);
 # 16: prima parola sola nel silenzio attaccata alla seconda (lonely_first_words), ultima parola che
-#     resta accesa nel silenzio accorciata (trim_silent_ends))
-SNAP_VERSION = 16
+#     resta accesa nel silenzio accorciata (trim_silent_ends);
+# 17: inizi delle parole corretti dall'allineatore fonetico dove il disaccordo è netto (phonetic_starts))
+SNAP_VERSION = 17
 _PHRASE_RANGE = 15.0  # dB sotto il volume tipico della frase entro cui la voce conta come «cantato»
 _SNAP_GAP = 0.3  # s di silenzio vero dentro una parola: la voce prima era la coda della parola precedente
 _EARLY_MAX = 3.0  # s: di quanto al massimo la prima parola di una riga può anticipare per seguire la voce
@@ -1797,6 +1798,37 @@ def trim_silent_ends(lines: list[Line], voice) -> int:
     return fixed
 
 
+_PHON_PAD = 0.5  # s attorno alla riga in cui l'allineatore fonetico cerca le parole
+_PHON_FIRST = 0.6  # s: di quanto almeno l'allineatore deve spostare avanti la prima parola della riga
+_PHON_INNER = 0.5  # s: … e le parole dentro la riga
+
+
+def phonetic_starts(lines: list[Line], audio) -> int:
+    """Inizi delle parole corretti con l'allineatore fonetico (phonetic.py), solo in avanti e solo
+    dove il disaccordo con i tempi attuali è netto.
+
+    Confronto con 38 brani corretti a mano: le parole che l'allineatore sposta avanti di almeno
+    _PHON_INNER secondi (_PHON_FIRST per la prima della riga, dove i tempi attuali sono già
+    corretti dalla voce) erano giuste 4 volte su 5; spostamenti più piccoli o all'indietro no.
+    La parola prima non si allunga (provato: peggiorava). Restituisce le parole spostate."""
+    from . import phonetic
+
+    fixed = 0
+    for l in lines:
+        if not l.words or l.manual or l.words[0].start < 0:
+            continue
+        found = phonetic.align_line(audio, [w.text for w in l.words], l.words[0].start - _PHON_PAD, l.words[-1].end + _PHON_PAD)
+        for k, (w, f) in enumerate(zip(l.words, found)):
+            if f is None or w.start < 0:
+                continue
+            if f[0] - w.start > (_PHON_FIRST if k == 0 else _PHON_INNER) and f[0] < w.end - 0.05:
+                w.start = f[0]
+                if 0 <= w.hold <= w.start + 0.1:
+                    w.hold = -1.0
+                fixed += 1
+    return fixed
+
+
 _INTRO_LINES = 4  # righe al massimo di un'introduzione da togliere
 _INTRO_GAP = 4.0  # s di pausa fra l'introduzione e la canzone vera
 _INTRO_QUIET = 15.0  # dB sotto il canto: voci di sottofondo, parlato (un attacco cantato piano sta sui 10)
@@ -1881,7 +1913,8 @@ def resnap_saved(song_dir: Path) -> int | None:
     ]
     # righe corrette a mano: si rimettono com'erano dopo le correzioni automatiche
     kept = {id(l): [(w.start, w.end, w.hold) for w in l.words] for l in lines if l.manual}
-    voice = voice_activity(_load_16k(vocals))
+    audio = _load_16k(vocals)
+    voice = voice_activity(audio)
     if (data.get("snap") or 0) >= 13:
         # già passato dalla catena intera: ripassarla allungherebbe una seconda volta le note
         # tenute (extend_to_voice parte dalle fini già allungate); si rifà solo quello che è cambiato
@@ -1889,6 +1922,7 @@ def resnap_saved(song_dir: Path) -> int | None:
         fixed += pause_word_starts(lines, voice)
         fixed += lonely_first_words(lines, voice)
         fixed += trim_silent_ends(lines, voice)
+        fixed += phonetic_starts(lines, audio)
         out = to_json(lines, data.get("source", ""), data.get("language", ""))
         path.write_text(json.dumps(out, ensure_ascii=False), encoding="utf-8")
         return fixed
@@ -1908,6 +1942,7 @@ def resnap_saved(song_dir: Path) -> int | None:
     fixed += pause_word_starts(lines, voice)
     fixed += lonely_first_words(lines, voice)
     fixed += trim_silent_ends(lines, voice)
+    fixed += phonetic_starts(lines, audio)
     if not data.get("source", "").startswith("manual"):  # il testo scritto a mano resta tutto
         fixed += drop_intro(lines, voice, sung)
     for l in lines:
@@ -2259,6 +2294,7 @@ def build(
             pause_word_starts(lines, voiced)
             lonely_first_words(lines, voiced)
             trim_silent_ends(lines, voiced)
+            phonetic_starts(lines, audio)
             if text is None:  # il testo scritto a mano resta tutto
                 drop_intro(lines, voiced, sung)
             return to_json(lines, "manual+whisper" if text is not None else "lrclib+whisper", language)

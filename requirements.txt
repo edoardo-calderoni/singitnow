@@ -9,6 +9,7 @@ audio-separator>=0.39
 onnxruntime-directml>=1.17; sys_platform == "win32"
 onnxruntime>=1.17; sys_platform != "win32"
 faster-whisper>=1.1
+transformers>=4.40  # allineatore fonetico delle parole (phonetic.py; PyTorch arriva già con audio-separator)
 pywebview>=5.3
 audioread>=3.0
 pycaw>=20240210; sys_platform == "win32"

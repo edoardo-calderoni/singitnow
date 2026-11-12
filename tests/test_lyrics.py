@@ -860,3 +860,42 @@ def test_coda_corta_nel_silenzio_resta():
     db[int(10.0 / _HOP) : int(13.7 / _HOP)] = -10.0
     line = Line([Word("pensare", 10.0, 11.0), Word("niente", 11.0, 14.0)])
     assert trim_silent_ends([line], (db, -40.0)) == 0
+
+
+def test_viterbi_trova_le_lettere_nell_ordine():
+    """Allineamento CTC: tre lettere in fila dentro il silenzio (blank)."""
+    import numpy as np
+
+    from singitnow.phonetic import _viterbi
+
+    lp = np.full((20, 6), -10.0)
+    lp[:, 0] = -0.1  # blank ovunque…
+    for t, tok in ((3, 4), (4, 4), (8, 5), (14, 4)):  # …tranne dove si sentono le lettere
+        lp[t, :] = -10.0
+        lp[t, tok] = -0.1
+    assert _viterbi(lp, [4, 5, 4]) == [(3, 4), (8, 8), (14, 14)]
+
+
+def test_inizi_corretti_dall_allineatore_fonetico(monkeypatch):
+    """I want it that way: «your» cominciava sulla vocale di «to»; l'allineatore lo sente oltre mezzo secondo dopo.
+    Solo spostamenti in avanti e netti: quelli piccoli o all'indietro restano."""
+    from singitnow import lyrics as L
+    from singitnow import phonetic
+
+    line = Line([Word("Can't", 42.5, 43.2), Word("reach", 43.2, 43.7), Word("to", 43.7, 44.57), Word("your", 44.57, 45.27), Word("heart", 45.27, 46.0)])
+    found = [(42.3, 43.0), (43.4, 44.0), (43.5, 44.2), (45.1, 45.4), (45.6, 46.1)]
+    monkeypatch.setattr(phonetic, "align_line", lambda audio, words, a, b: found)
+    assert L.phonetic_starts([line], object()) == 1
+    assert [round(w.start, 2) for w in line.words] == [42.5, 43.2, 43.7, 45.1, 45.27]
+    assert line.words[2].end == 44.57  # la parola prima non si allunga
+
+
+def test_senza_modello_fonetico_resta_tutto_com_era(monkeypatch):
+    import numpy as np
+
+    from singitnow import lyrics as L
+    from singitnow import phonetic
+
+    monkeypatch.setattr(phonetic, "_get", lambda: None)
+    line = _breath_line()
+    assert L.phonetic_starts([line], np.zeros(16000 * 20, dtype=np.float32)) == 0

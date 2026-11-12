@@ -1010,8 +1010,10 @@ _HOP = 0.02  # risoluzione dell'inviluppo della voce (secondi)
 #  9: la prima parola di una riga parte quando il cantante attacca davvero, anche se prima;
 # 10: la nota tenuta non si allunga sulla coda della voce, e il colore la segue a parte: `hold`;
 # 11: la prima parola non confermata parte quando la voce arriva al volume del canto: late_line_starts;
-# 12: …anche se Whisper la sente prima, dove però c'è solo il fondo)
-SNAP_VERSION = 12
+# 12: …anche se Whisper la sente prima, dove però c'è solo il fondo;
+# 13: la riga parte dopo il respiro, non sulla coda della riga prima: breath_line_starts.
+#     Da qui i brani con righe corrette a mano non si toccano più: sono stati controllati riga per riga)
+SNAP_VERSION = 13
 _PHRASE_RANGE = 15.0  # dB sotto il volume tipico della frase entro cui la voce conta come «cantato»
 _SNAP_GAP = 0.3  # s di silenzio vero dentro una parola: la voce prima era la coda della parola precedente
 _EARLY_MAX = 3.0  # s: di quanto al massimo la prima parola di una riga può anticipare per seguire la voce
@@ -1538,6 +1540,92 @@ def fix_held_notes(
     return fixed
 
 
+# Ricavati confrontando la sincronizzazione automatica con 28 brani corretti a mano (novembre 2026)
+_BREATH_HIGH = 6.0  # dB sotto il volume della riga: da qui in su la voce canta
+_BREATH_DIP = 8.0  # dB sotto il volume della riga: calo che separa due frasi (respiro)
+_BREATH_FLAT = 9.0  # dB sotto il volume della riga: all'inizio della parola c'è solo il fondo
+_BREATH_ONSET = 9.0  # dB sotto il volume della riga: da qui la voce sta già risalendo all'attacco
+_BREATH_REACH = 1.6  # s: fin dove si cerca l'attacco vero dopo l'inizio stimato
+_BREATH_MIN = 0.55  # s: spostamenti più piccoli sono di solito una consonante della parola stessa
+_BREATH_LRC = 0.1  # s: di quanto il tempo di LRCLIB deve stare più vicino al vecchio inizio per fermare lo spostamento
+
+
+def breath_line_starts(lines: list[Line], voice) -> int:
+    """La riga parte dopo il respiro, non sulla coda della riga prima né sul fondo.
+
+    Le due correzioni a mano più frequenti sugli inizi delle righe (righe che partivano 0,5-1 s
+    prima del cantante):
+    - la prima parola comincia mentre il cantante tiene ancora l'ultima nota della riga prima
+      (Whisper mette il confine fra le due frasi dove finisce di riconoscere la prima): la riga
+      parte dove la voce riattacca dopo il calo del respiro (la fine della riga prima non si
+      tocca: allungarla fino al calo, provato, peggiorava più righe di quante ne migliorasse);
+    - la prima parola comincia sul fondo rimasto nella traccia della voce (cori, strumenti, 8-15
+      dB sotto il canto): la riga parte dove la voce sale al volume del canto.
+
+    Solo spostamenti di almeno _BREATH_MIN secondi: quelli più piccoli erano quasi sempre una
+    consonante o la seconda sillaba della parola stessa. Con i tempi di LRCLIB (`lrc_time`,
+    riportati al video con lo scarto tipico del brano) lo spostamento si ferma se LRCLIB colloca
+    la riga chiaramente al vecchio inizio. Restituisce le righe corrette.
+    """
+    import statistics
+
+    import numpy as np
+
+    db, _ = voice
+    hold = int(0.12 / _HOP)
+    offs = [l.words[0].start - l.lrc_time for l in lines if l.words and l.lrc_time is not None and l.words[0].start >= 0]
+    offset = statistics.median(offs) if offs else None
+
+    def attack(l: Line) -> float | None:
+        """Dove il cantante attacca davvero la riga, se è da spostare."""
+        first = l.words[0]
+        la, lb = int(first.start / _HOP), int(l.words[-1].end / _HOP)
+        if lb - la < 5 or lb + hold >= len(db) or la < 3:
+            return None
+        ref = float(np.percentile(db[la:lb], 75))  # volume tipico della riga
+        high = ref - _BREATH_HIGH
+        tail = np.all(db[la - 3 : la] > high)  # la voce arriva da prima: coda della nota precedente
+        flat = np.all(db[la : la + int(0.1 / _HOP)] < ref - _BREATH_FLAT)  # all'inizio solo fondo
+        nxt = l.words[1].start if len(l.words) > 1 and l.words[1].start >= 0 else first.end
+        limit = int(min(first.start + _BREATH_REACH, first.end - 0.08, nxt - 0.08) / _HOP)
+        if not (tail or flat) or limit - la < 3:
+            return None
+        seg = db[la : limit + hold]
+        lows = np.flatnonzero(seg[: limit - la] < ref - _BREATH_DIP)
+        if not lows.size:
+            return None
+        j = int(lows[0])  # il calo (respiro, o il fondo)
+        run = np.convolve((seg > high).astype(int), np.ones(hold, dtype=int), mode="valid") == hold
+        ks = np.flatnonzero(run[j : limit - la]) + j
+        if not ks.size:
+            return None
+        k = int(ks[0])  # la voce torna al volume del canto e ci resta
+        while k - 1 > j and seg[k - 1] > ref - _BREATH_ONSET:
+            k -= 1  # indietro sulla salita: l'attacco
+        start = (la + k) * _HOP
+        if start - first.start < _BREATH_MIN:
+            return None
+        if offset is not None and l.lrc_time is not None:
+            lrc = l.lrc_time + offset
+            if abs(lrc - first.start) < abs(lrc - start) - _BREATH_LRC:
+                return None  # LRCLIB mette la riga dove già stava
+        return start
+
+    fixed = 0
+    for l in lines:
+        if not l.words or l.words[0].start < 0 or l.manual:
+            continue
+        start = attack(l)
+        if start is None:
+            continue
+        first = l.words[0]
+        first.start = start
+        if 0 <= first.hold <= start + 0.1:
+            first.hold = -1.0
+        fixed += 1
+    return fixed
+
+
 _INTRO_LINES = 4  # righe al massimo di un'introduzione da togliere
 _INTRO_GAP = 4.0  # s di pausa fra l'introduzione e la canzone vera
 _INTRO_QUIET = 15.0  # dB sotto il canto: voci di sottofondo, parlato (un attacco cantato piano sta sui 10)
@@ -1605,6 +1693,12 @@ def resnap_saved(song_dir: Path) -> int | None:
         return None
     if data.get("snap") == SNAP_VERSION or not data.get("lines") or not vocals.exists():
         return None
+    if any(l.get("manual") for l in data["lines"]):
+        # brano corretto nell'editor: chi l'ha corretto ascolta tutte le righe e lascia com'erano
+        # solo quelle giuste, quindi anche le righe non toccate restano come sono
+        data["snap"] = SNAP_VERSION
+        path.write_text(json.dumps(data, ensure_ascii=False), encoding="utf-8")
+        return None
     lines = [
         Line(
             [Word(w["t"], w["s"], w["e"], orig=w.get("o", ""), hold=w.get("h", -1.0)) for w in l["words"]],
@@ -1629,6 +1723,7 @@ def resnap_saved(song_dir: Path) -> int | None:
     fixed += extend_to_voice(lines, voice, sung)
     if sung:
         fixed += fix_held_notes(lines, voice, sung, data.get("language", ""))
+    fixed += breath_line_starts(lines, voice)
     if not data.get("source", "").startswith("manual"):  # il testo scritto a mano resta tutto
         fixed += drop_intro(lines, voice, sung)
     for l in lines:
@@ -1976,6 +2071,7 @@ def build(
             early_line_starts(lines, voiced, sung)
             extend_to_voice(lines, voiced, sung)
             fix_held_notes(lines, voiced, sung, language)
+            breath_line_starts(lines, voiced)
             if text is None:  # il testo scritto a mano resta tutto
                 drop_intro(lines, voiced, sung)
             return to_json(lines, "manual+whisper" if text is not None else "lrclib+whisper", language)

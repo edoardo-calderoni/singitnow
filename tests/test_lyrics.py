@@ -637,3 +637,87 @@ def test_riga_riscritta_nell_editor(tmp_path):
     bad = [{"edited": True, "words": [{"t": "x", "s": 5.0, "e": 6.0}]}, {"words": [{"k": 2, "t": "tre", "s": 3.0, "e": 4.0}]}]
     with pytest.raises(TimingError):
         save_timings(tmp_path, bad, 200)  # fuori ordine
+
+
+def _breath_voice(dip_at: float, dip_len: float = 0.2):
+    """Riga prima cantata fino a dip_at (nota tenuta), respiro di dip_len secondi, poi la riga nuova."""
+    import numpy as np
+
+    db = np.full(int(30 / _HOP), -60.0)
+    db[int(8.0 / _HOP) : int(16.0 / _HOP)] = -10.0
+    db[int(dip_at / _HOP) : int((dip_at + dip_len) / _HOP)] = -30.0
+    return db, -40.0
+
+
+def _breath_line(start: float = 10.0):
+    return Line([Word("Starò", start, 11.6), Word("attento", 11.6, 12.4), Word("ad", 12.4, 13.0), Word("uscire", 13.0, 15.5)])
+
+
+def test_riga_sulla_coda_della_precedente_parte_dopo_il_respiro():
+    """Ragni: «Starò attento…» partiva mentre il cantante teneva ancora «…a te»."""
+    from singitnow.lyrics import breath_line_starts
+
+    line = _breath_line()
+    assert breath_line_starts([line], _breath_voice(10.5)) == 1
+    assert line.words[0].start == pytest.approx(10.7, abs=0.05)
+    assert breath_line_starts([line], _breath_voice(10.5)) == 0  # ripetere non cambia niente
+
+
+def test_calo_subito_dopo_l_inizio_e_una_consonante():
+    """Un calo entro mezzo secondo è quasi sempre la parola stessa («Sta-volta»): si resta."""
+    from singitnow.lyrics import breath_line_starts
+
+    line = _breath_line()
+    assert breath_line_starts([line], _breath_voice(10.15)) == 0
+    assert line.words[0].start == 10.0
+
+
+def test_riga_che_parte_sul_fondo():
+    """Shallow: la riga partiva sui cori rimasti nella traccia della voce, 12 dB sotto il canto."""
+    import numpy as np
+
+    from singitnow.lyrics import breath_line_starts
+
+    db = np.full(int(30 / _HOP), -60.0)
+    db[int(9.0 / _HOP) : int(10.8 / _HOP)] = -22.0  # fondo
+    db[int(10.8 / _HOP) : int(16.0 / _HOP)] = -10.0  # il cantante
+    line = _breath_line()
+    assert breath_line_starts([line], (db, -40.0)) == 1
+    assert line.words[0].start == pytest.approx(10.8, abs=0.05)
+
+
+def test_lrclib_contrario_ferma_lo_spostamento():
+    """Se LRCLIB (con lo scarto tipico del brano) mette la riga dov'era, non si sposta."""
+    from singitnow.lyrics import breath_line_starts
+
+    others = [Line([Word("a", t, t + 0.5)], lrc_time=t - 1.0) for t in (2.0, 4.0, 6.0)]
+    line = _breath_line()
+    line.lrc_time = 9.0  # con lo scarto (+1 s) dice 10.0: proprio dove già sta
+    assert breath_line_starts(others + [line], _breath_voice(10.5)) == 0
+    assert line.words[0].start == 10.0
+
+
+def test_brano_corretto_a_mano_non_si_ricorregge(tmp_path):
+    """Chi corregge un brano ascolta tutte le righe: anche quelle lasciate com'erano sono giuste."""
+    import json
+
+    import numpy as np
+
+    from singitnow import lyrics as L
+
+    _saved_song(tmp_path)
+    data = json.loads((tmp_path / "lyrics.json").read_text(encoding="utf-8"))
+    data["lines"][0]["manual"] = True
+    (tmp_path / "lyrics.json").write_text(json.dumps(data), encoding="utf-8")
+    (tmp_path / "vocals.m4a").write_bytes(b"x")
+    db = np.full(int(10 / _HOP), -60.0)
+    db[int(3.5 / _HOP) : int(4.0 / _HOP)] = -12.0  # la voce direbbe di spostare «tre» (riga non toccata)
+    orig = (L._load_16k, L.voice_activity)
+    L._load_16k, L.voice_activity = (lambda p: None), (lambda a: (db, -40.0))
+    try:
+        assert L.resnap_saved(tmp_path) is None
+    finally:
+        L._load_16k, L.voice_activity = orig
+    out = json.loads((tmp_path / "lyrics.json").read_text(encoding="utf-8"))
+    assert out["lines"][1]["words"][0]["s"] == 3.0
+    assert out["snap"] == L.SNAP_VERSION

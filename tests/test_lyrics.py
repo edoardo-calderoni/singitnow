@@ -817,3 +817,46 @@ def test_calo_breve_nella_riga_non_sposta():
     line = _pause_line()
     assert pause_word_starts([line], _pause_voice(0.2)) == 0
     assert line.words[2].start == 12.0
+
+
+def test_prima_parola_sola_nel_silenzio_si_attacca_alla_seconda():
+    """Sally: «Tanto» stava un secondo prima, dove la voce non c'è; il resto della riga era giusto."""
+    import numpy as np
+
+    from singitnow.lyrics import lonely_first_words
+
+    db = np.full(int(30 / _HOP), -60.0)
+    db[int(11.0 / _HOP) : int(14.0 / _HOP)] = -10.0  # la riga cantata
+    line = Line([Word("Tanto", 10.0, 10.15), Word("per", 11.2, 11.6), Word("non", 11.6, 12.2), Word("sentire", 12.2, 14.0)])
+    assert lonely_first_words([line], (db, -40.0)) == 1
+    assert line.words[0].start == pytest.approx(11.0, abs=0.03)
+    assert line.words[0].end == 11.2
+    assert lonely_first_words([line], (db, -40.0)) == 0
+
+
+def test_ultima_parola_non_resta_accesa_nel_silenzio():
+    """Sally: «niente» restava accesa un secondo e mezzo dopo che la voce si era spenta."""
+    import numpy as np
+
+    from singitnow.lyrics import trim_silent_ends
+
+    db = np.full(int(30 / _HOP), -60.0)
+    db[int(10.0 / _HOP) : int(12.5 / _HOP)] = -10.0
+    line = Line([Word("pensare", 10.0, 11.0), Word("niente", 11.0, 14.0)])
+    assert trim_silent_ends([line], (db, -40.0)) == 1
+    assert line.words[-1].end == pytest.approx(12.5, abs=0.03)
+    assert trim_silent_ends([line], (db, -40.0)) == 0
+    held = Line([Word("pensare", 10.0, 11.0), Word("niente", 11.0, 14.0, hold=12.0)])
+    assert trim_silent_ends([held], (db, -40.0)) == 0  # nota tenuta riconosciuta: non si tocca
+
+
+def test_coda_corta_nel_silenzio_resta():
+    """Code di silenzio di pochi decimi non si tagliano: non danno fastidio e spesso sono giuste."""
+    import numpy as np
+
+    from singitnow.lyrics import trim_silent_ends
+
+    db = np.full(int(30 / _HOP), -60.0)
+    db[int(10.0 / _HOP) : int(13.7 / _HOP)] = -10.0
+    line = Line([Word("pensare", 10.0, 11.0), Word("niente", 11.0, 14.0)])
+    assert trim_silent_ends([line], (db, -40.0)) == 0

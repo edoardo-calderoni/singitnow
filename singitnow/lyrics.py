@@ -1015,8 +1015,10 @@ _HOP = 0.02  # risoluzione dell'inviluppo della voce (secondi)
 #     Da qui i brani con righe corrette a mano non si toccano più: sono stati controllati riga per riga;
 # 14: la prima parola partita sulla coda della riga prima non copre più il silenzio che segue
 #     (breath_line_starts, after_gap);
-# 15: parola dentro la riga dopo una pausa: parte dove la voce torna (pause_word_starts))
-SNAP_VERSION = 15
+# 15: parola dentro la riga dopo una pausa: parte dove la voce torna (pause_word_starts);
+# 16: prima parola sola nel silenzio attaccata alla seconda (lonely_first_words), ultima parola che
+#     resta accesa nel silenzio accorciata (trim_silent_ends))
+SNAP_VERSION = 16
 _PHRASE_RANGE = 15.0  # dB sotto il volume tipico della frase entro cui la voce conta come «cantato»
 _SNAP_GAP = 0.3  # s di silenzio vero dentro una parola: la voce prima era la coda della parola precedente
 _EARLY_MAX = 3.0  # s: di quanto al massimo la prima parola di una riga può anticipare per seguire la voce
@@ -1721,6 +1723,80 @@ def pause_word_starts(lines: list[Line], voice) -> int:
     return fixed
 
 
+# Prima parola isolata nel silenzio, fine nel silenzio (ricavati da 37 brani corretti a mano)
+_LONELY_QUIET = 15.0  # dB sotto il volume della riga: la prima parola sta dove non si canta
+_LONELY_GAP = 0.2  # s fra la prima parola e la seconda: la prima è rimasta staccata
+_LONELY_RISE = 15.0  # dB sotto il volume della riga: da qui la voce è arrivata (per almeno 0,1 s)
+_SILENT_END = 20.0  # dB sotto il volume della riga: in coda all'ultima parola non si canta più
+_SILENT_END_MIN = 0.5  # s di silenzio in coda, almeno (code più corte non danno fastidio)
+
+
+def lonely_first_words(lines: list[Line], voice) -> int:
+    """Prima parola rimasta sola nel silenzio, staccata dal resto della riga («Tanto … per non
+    sentire»: «Tanto» un secondo prima, dove la voce non c'è): va attaccata alla seconda parola,
+    da dove la voce arriva. Restituisce le righe corrette."""
+    import numpy as np
+
+    db, _ = voice
+    hold = int(0.1 / _HOP)
+    fixed = 0
+    for l in lines:
+        if len(l.words) < 2 or l.manual or l.words[0].start < 0:
+            continue
+        w0, w1 = l.words[0], l.words[1]
+        lo, hi = int(w0.start / _HOP), int(l.words[-1].end / _HOP)
+        a, b = lo, int(w0.end / _HOP)
+        if hi - lo < 5 or hi > len(db) or b - a < 2 or w1.start - w0.end < _LONELY_GAP:
+            continue
+        ref = float(np.percentile(db[lo:hi], 75))
+        if float(np.mean(db[a:b])) > ref - _LONELY_QUIET:
+            continue
+        start = None
+        for k in range(b, min(int((w1.start + 0.3) / _HOP), len(db) - hold)):
+            if np.all(db[k : k + hold] > ref - _LONELY_RISE):
+                start = k * _HOP
+                break
+        if start is None:
+            continue
+        start = min(start, w1.start - 0.1)
+        w0.start = start
+        w0.end = max(w0.end, w1.start)
+        if 0 <= w0.hold <= start + 0.1:
+            w0.hold = -1.0
+        fixed += 1
+    return fixed
+
+
+def trim_silent_ends(lines: list[Line], voice) -> int:
+    """Ultima parola che resta accesa nel silenzio («Senza pensare a niente», un secondo e mezzo dopo
+    che la voce si è spenta). extend_to_voice accorcia solo le parole che Whisper ha sentito; qui si
+    tagliano le altre: se in coda c'è almeno _SILENT_END_MIN di silenzio vero, la parola finisce dove
+    la voce si spegne. Restituisce le parole accorciate."""
+    import numpy as np
+
+    db, _ = voice
+    fixed = 0
+    for l in lines:
+        if not l.words or l.manual or l.words[0].start < 0:
+            continue
+        w = l.words[-1]
+        if w.hold >= 0:
+            continue  # nota tenuta riconosciuta: ci pensa extend_to_voice
+        lo, e = int(l.words[0].start / _HOP), int(w.end / _HOP)
+        floor = int((w.start + 0.15) / _HOP)
+        if e > len(db) or e - lo < 5 or e - floor < 3:
+            continue
+        ref = float(np.percentile(db[lo:e], 75))
+        k = e
+        while k > floor and db[k - 1] < ref - _SILENT_END:
+            k -= 1
+        if (e - k) * _HOP < _SILENT_END_MIN or w.end - k * _HOP < 0.15:
+            continue
+        w.end = k * _HOP
+        fixed += 1
+    return fixed
+
+
 _INTRO_LINES = 4  # righe al massimo di un'introduzione da togliere
 _INTRO_GAP = 4.0  # s di pausa fra l'introduzione e la canzone vera
 _INTRO_QUIET = 15.0  # dB sotto il canto: voci di sottofondo, parlato (un attacco cantato piano sta sui 10)
@@ -1811,6 +1887,8 @@ def resnap_saved(song_dir: Path) -> int | None:
         # tenute (extend_to_voice parte dalle fini già allungate); si rifà solo quello che è cambiato
         fixed = breath_line_starts(lines, voice)
         fixed += pause_word_starts(lines, voice)
+        fixed += lonely_first_words(lines, voice)
+        fixed += trim_silent_ends(lines, voice)
         out = to_json(lines, data.get("source", ""), data.get("language", ""))
         path.write_text(json.dumps(out, ensure_ascii=False), encoding="utf-8")
         return fixed
@@ -1828,6 +1906,8 @@ def resnap_saved(song_dir: Path) -> int | None:
         fixed += fix_held_notes(lines, voice, sung, data.get("language", ""))
     fixed += breath_line_starts(lines, voice)
     fixed += pause_word_starts(lines, voice)
+    fixed += lonely_first_words(lines, voice)
+    fixed += trim_silent_ends(lines, voice)
     if not data.get("source", "").startswith("manual"):  # il testo scritto a mano resta tutto
         fixed += drop_intro(lines, voice, sung)
     for l in lines:
@@ -2177,6 +2257,8 @@ def build(
             fix_held_notes(lines, voiced, sung, language)
             breath_line_starts(lines, voiced)
             pause_word_starts(lines, voiced)
+            lonely_first_words(lines, voiced)
+            trim_silent_ends(lines, voiced)
             if text is None:  # il testo scritto a mano resta tutto
                 drop_intro(lines, voiced, sung)
             return to_json(lines, "manual+whisper" if text is not None else "lrclib+whisper", language)

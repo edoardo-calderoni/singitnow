@@ -899,3 +899,19 @@ def test_senza_modello_fonetico_resta_tutto_com_era(monkeypatch):
     monkeypatch.setattr(phonetic, "_get", lambda: None)
     line = _breath_line()
     assert L.phonetic_starts([line], np.zeros(16000 * 20, dtype=np.float32)) == 0
+
+
+def test_viterbi_riga_lunga():
+    """Wannabe: con più di 63 lettere l'indice dello stato non sta più in 8 bit."""
+    import numpy as np
+
+    from singitnow.phonetic import _viterbi
+
+    toks = [4 + (i % 2) for i in range(100)]
+    lp = np.full((400, 6), -10.0)
+    lp[:, 0] = -0.1
+    for i, tok in enumerate(toks):
+        lp[2 + 3 * i, :] = -10.0
+        lp[2 + 3 * i, tok] = -0.1
+    spans = _viterbi(lp, toks)
+    assert spans[0] == (2, 2) and spans[-1] == (299, 299)

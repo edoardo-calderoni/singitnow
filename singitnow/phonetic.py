@@ -103,7 +103,7 @@ def _viterbi(lp: np.ndarray, toks: list[int]) -> list[tuple[int, int] | None]:
             i = s // 2
             a, b = spans.get(i, (t, t))
             spans[i] = (min(a, t), max(b, t))
-        s -= back[t, s]
+        s -= int(back[t, s])
     return [spans.get(i) for i in range(len(toks))]
 
 

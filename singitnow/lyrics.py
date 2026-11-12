@@ -1012,8 +1012,10 @@ _HOP = 0.02  # risoluzione dell'inviluppo della voce (secondi)
 # 11: la prima parola non confermata parte quando la voce arriva al volume del canto: late_line_starts;
 # 12: …anche se Whisper la sente prima, dove però c'è solo il fondo;
 # 13: la riga parte dopo il respiro, non sulla coda della riga prima: breath_line_starts.
-#     Da qui i brani con righe corrette a mano non si toccano più: sono stati controllati riga per riga)
-SNAP_VERSION = 13
+#     Da qui i brani con righe corrette a mano non si toccano più: sono stati controllati riga per riga;
+# 14: la prima parola partita sulla coda della riga prima non copre più il silenzio che segue
+#     (breath_line_starts, after_gap))
+SNAP_VERSION = 14
 _PHRASE_RANGE = 15.0  # dB sotto il volume tipico della frase entro cui la voce conta come «cantato»
 _SNAP_GAP = 0.3  # s di silenzio vero dentro una parola: la voce prima era la coda della parola precedente
 _EARLY_MAX = 3.0  # s: di quanto al massimo la prima parola di una riga può anticipare per seguire la voce
@@ -1548,6 +1550,11 @@ _BREATH_ONSET = 9.0  # dB sotto il volume della riga: da qui la voce sta già ri
 _BREATH_REACH = 1.6  # s: fin dove si cerca l'attacco vero dopo l'inizio stimato
 _BREATH_MIN = 0.55  # s: spostamenti più piccoli sono di solito una consonante della parola stessa
 _BREATH_LRC = 0.1  # s: di quanto il tempo di LRCLIB deve stare più vicino al vecchio inizio per fermare lo spostamento
+# Silenzio dentro la prima parola (ricavati da altri 5 brani, verificati sui 30 di prima)
+_GAP_SILENT = 20.0  # dB sotto il volume della riga: qui il cantante tace davvero
+_GAP_MIN = 0.25  # s di silenzio vero, almeno
+_GAP_ONSET = 15.0  # dB sotto il volume della riga: da qui la voce è ripartita
+_GAP_TAIL = 15.0  # dB sotto il volume della riga: prima dell'inizio c'è ancora voce (coda della riga prima)
 
 
 def breath_line_starts(lines: list[Line], voice) -> int:
@@ -1611,18 +1618,49 @@ def breath_line_starts(lines: list[Line], voice) -> int:
                 return None  # LRCLIB mette la riga dove già stava
         return start
 
+    def after_gap(l: Line) -> float | None:
+        """La prima parola, partita sulla coda della riga prima, si allunga su un silenzio vero:
+        la riga parte dove la voce riprende dopo il silenzio (anche a ridosso della fine della
+        parola, dove `attack` non cerca)."""
+        first = l.words[0]
+        a, b = int(first.start / _HOP), int(first.end / _HOP)
+        lb = int(l.words[-1].end / _HOP)
+        if b - a < 4 or a < 3 or lb - a < 5 or b > len(db):
+            return None
+        ref = float(np.percentile(db[a:lb], 75))
+        if float(db[a - 3 : a].mean()) <= ref - _GAP_TAIL:
+            return None  # prima c'è silenzio: l'inizio è già un attacco vero
+        low = db[a:b] < ref - _GAP_SILENT
+        idx = np.flatnonzero(low)
+        if not idx.size:
+            return None
+        k = int(idx[-1])  # fine dell'ultimo silenzio dentro la parola
+        j = k
+        while j > 0 and low[j - 1]:
+            j -= 1
+        if (k - j + 1) * _HOP < _GAP_MIN:
+            return None
+        t = k + 1
+        while t < b - a and db[a + t] < ref - _GAP_ONSET:
+            t += 1
+        start = min((a + t) * _HOP, first.end - 0.04)
+        return start if start - first.start > 0.15 else None
+
     fixed = 0
     for l in lines:
         if not l.words or l.words[0].start < 0 or l.manual:
             continue
-        start = attack(l)
-        if start is None:
-            continue
-        first = l.words[0]
-        first.start = start
-        if 0 <= first.hold <= start + 0.1:
-            first.hold = -1.0
-        fixed += 1
+        moved = False
+        for find in (attack, after_gap):
+            start = find(l)
+            if start is None:
+                continue
+            first = l.words[0]
+            first.start = start
+            if 0 <= first.hold <= start + 0.1:
+                first.hold = -1.0
+            moved = True
+        fixed += moved
     return fixed
 
 
@@ -1711,6 +1749,13 @@ def resnap_saved(song_dir: Path) -> int | None:
     # righe corrette a mano: si rimettono com'erano dopo le correzioni automatiche
     kept = {id(l): [(w.start, w.end, w.hold) for w in l.words] for l in lines if l.manual}
     voice = voice_activity(_load_16k(vocals))
+    if (data.get("snap") or 0) >= 13:
+        # già passato dalla catena intera: ripassarla allungherebbe una seconda volta le note
+        # tenute (extend_to_voice parte dalle fini già allungate); si rifà solo quello che è cambiato
+        fixed = breath_line_starts(lines, voice)
+        out = to_json(lines, data.get("source", ""), data.get("language", ""))
+        path.write_text(json.dumps(out, ensure_ascii=False), encoding="utf-8")
+        return fixed
     fixed = snap_to_voice(lines, voice)
     try:  # trascrizione di Whisper salvata: serve a confermare le correzioni sulle note tenute
         wj = json.loads((song_dir / "whisper.json").read_text(encoding="utf-8"))

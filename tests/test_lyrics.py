@@ -686,6 +686,37 @@ def test_riga_che_parte_sul_fondo():
     assert line.words[0].start == pytest.approx(10.8, abs=0.05)
 
 
+def _gap_voice(before: float):
+    """Voce a -10 dB fino a 10.2 (da `before`), silenzio vero fino a 11.55, poi la riga nuova."""
+    import numpy as np
+
+    db = np.full(int(30 / _HOP), -60.0)
+    db[int(before / _HOP) : int(10.2 / _HOP)] = -10.0
+    db[int(11.55 / _HOP) : int(16.0 / _HOP)] = -10.0
+    return db, -40.0
+
+
+def test_prima_parola_allungata_sul_silenzio_parte_dopo():
+    """Prima di ogni cosa: «Che» partiva sulla coda di «…bambino» e copriva un secondo e mezzo di
+    silenzio; la riga parte dove la voce riprende, anche a ridosso della fine della parola."""
+    from singitnow.lyrics import breath_line_starts
+
+    line = _breath_line()
+    assert breath_line_starts([line], _gap_voice(8.0)) == 1
+    assert line.words[0].start == pytest.approx(11.55, abs=0.03)
+    assert line.words[0].end == 11.6
+    assert breath_line_starts([line], _gap_voice(8.0)) == 0
+
+
+def test_silenzio_dopo_un_attacco_vero_non_sposta():
+    """Se prima dell'inizio c'è silenzio, la parola parte davvero lì (un «Oh-oh» seguito da una pausa)."""
+    from singitnow.lyrics import breath_line_starts
+
+    line = _breath_line()
+    assert breath_line_starts([line], _gap_voice(10.0)) == 0
+    assert line.words[0].start == 10.0
+
+
 def test_lrclib_contrario_ferma_lo_spostamento():
     """Se LRCLIB (con lo scarto tipico del brano) mette la riga dov'era, non si sposta."""
     from singitnow.lyrics import breath_line_starts
@@ -720,4 +751,35 @@ def test_brano_corretto_a_mano_non_si_ricorregge(tmp_path):
         L._load_16k, L.voice_activity = orig
     out = json.loads((tmp_path / "lyrics.json").read_text(encoding="utf-8"))
     assert out["lines"][1]["words"][0]["s"] == 3.0
+    assert out["snap"] == L.SNAP_VERSION
+
+
+def test_brano_gia_riallineato_non_riallunga_le_note(tmp_path):
+    """Dalla versione 13 la catena intera è già passata: si rifà solo l'inizio delle righe, perché
+    ripassare extend_to_voice allungherebbe di nuovo le note tenute."""
+    import json
+
+    import numpy as np
+
+    from singitnow import lyrics as L
+
+    _saved_song(tmp_path)
+    data = json.loads((tmp_path / "lyrics.json").read_text(encoding="utf-8"))
+    data["snap"] = 13
+    (tmp_path / "lyrics.json").write_text(json.dumps(data), encoding="utf-8")
+    (tmp_path / "vocals.m4a").write_bytes(b"x")
+    db = np.full(int(10 / _HOP), -10.0)  # voce piena ovunque: extend_to_voice allungherebbe tutto
+
+    def boom(*a, **k):
+        raise AssertionError("catena intera ripassata")
+
+    orig = (L._load_16k, L.voice_activity, L.extend_to_voice, L.snap_to_voice)
+    L._load_16k, L.voice_activity = (lambda p: None), (lambda a: (db, -40.0))
+    L.extend_to_voice = L.snap_to_voice = boom
+    try:
+        L.resnap_saved(tmp_path)
+    finally:
+        L._load_16k, L.voice_activity, L.extend_to_voice, L.snap_to_voice = orig
+    out = json.loads((tmp_path / "lyrics.json").read_text(encoding="utf-8"))
+    assert [l["end"] for l in out["lines"]] == [2.0, 4.0]
     assert out["snap"] == L.SNAP_VERSION

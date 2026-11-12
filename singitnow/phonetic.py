@@ -46,11 +46,14 @@ def _get():
                 from huggingface_hub import snapshot_download
                 from transformers import Wav2Vec2ForCTC
 
-                path = snapshot_download(
-                    MODEL,
+                kw = dict(
                     cache_dir=str(config.MODELS_DIR / "phonetic"),
                     allow_patterns=["config.json", "model.safetensors", "vocab.json", "preprocessor_config.json"],
                 )
+                try:  # già scaricato: niente rete (alle serate internet può mancare)
+                    path = snapshot_download(MODEL, local_files_only=True, **kw)
+                except Exception:
+                    path = snapshot_download(MODEL, **kw)  # la prima volta: circa 1,2 GB
                 torch.set_num_threads(max(4, (os.cpu_count() or 8) // 2))
                 model = Wav2Vec2ForCTC.from_pretrained(path).eval()
                 with open(os.path.join(path, "vocab.json"), encoding="utf-8") as f:

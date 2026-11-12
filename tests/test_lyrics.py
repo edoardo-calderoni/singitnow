@@ -783,3 +783,37 @@ def test_brano_gia_riallineato_non_riallunga_le_note(tmp_path):
     out = json.loads((tmp_path / "lyrics.json").read_text(encoding="utf-8"))
     assert [l["end"] for l in out["lines"]] == [2.0, 4.0]
     assert out["snap"] == L.SNAP_VERSION
+
+
+def _pause_voice(pause_len: float):
+    """Riga cantata a -10 dB; dopo 12.0 la voce cala a -25 dB per pause_len secondi."""
+    import numpy as np
+
+    db = np.full(int(30 / _HOP), -60.0)
+    db[int(10.0 / _HOP) : int(16.0 / _HOP)] = -10.0
+    db[int(12.1 / _HOP) : int((12.1 + pause_len) / _HOP)] = -25.0
+    return db, -40.0
+
+
+def _pause_line():
+    return Line([Word("parlar", 10.0, 11.0), Word("d'amore", 11.0, 12.0), Word("l'emozione", 12.0, 14.0), Word("non", 14.0, 15.5)])
+
+
+def test_parola_dopo_una_pausa_nella_riga_parte_quando_la_voce_torna():
+    """L'emozione non ha voce: «l'emozione» partiva attaccata a «d'amore», un secondo prima."""
+    from singitnow.lyrics import pause_word_starts
+
+    line = _pause_line()
+    assert pause_word_starts([line], _pause_voice(0.9)) == 1
+    assert line.words[2].start == pytest.approx(13.0, abs=0.03)
+    assert line.words[1].end == 12.0  # nella pausa non si canta: la parola prima non si allunga
+    assert pause_word_starts([line], _pause_voice(0.9)) == 0
+
+
+def test_calo_breve_nella_riga_non_sposta():
+    """Un calo di un attimo (consonante, respiro rapido) non è una pausa."""
+    from singitnow.lyrics import pause_word_starts
+
+    line = _pause_line()
+    assert pause_word_starts([line], _pause_voice(0.2)) == 0
+    assert line.words[2].start == 12.0

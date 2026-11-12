@@ -1014,8 +1014,9 @@ _HOP = 0.02  # risoluzione dell'inviluppo della voce (secondi)
 # 13: la riga parte dopo il respiro, non sulla coda della riga prima: breath_line_starts.
 #     Da qui i brani con righe corrette a mano non si toccano più: sono stati controllati riga per riga;
 # 14: la prima parola partita sulla coda della riga prima non copre più il silenzio che segue
-#     (breath_line_starts, after_gap))
-SNAP_VERSION = 14
+#     (breath_line_starts, after_gap);
+# 15: parola dentro la riga dopo una pausa: parte dove la voce torna (pause_word_starts))
+SNAP_VERSION = 15
 _PHRASE_RANGE = 15.0  # dB sotto il volume tipico della frase entro cui la voce conta come «cantato»
 _SNAP_GAP = 0.3  # s di silenzio vero dentro una parola: la voce prima era la coda della parola precedente
 _EARLY_MAX = 3.0  # s: di quanto al massimo la prima parola di una riga può anticipare per seguire la voce
@@ -1664,6 +1665,62 @@ def breath_line_starts(lines: list[Line], voice) -> int:
     return fixed
 
 
+# Pausa dentro la riga (ricavati da 36 brani corretti a mano, novembre 2026)
+_PAUSE_WITHIN = 0.3  # s: il calo deve cominciare entro questo tempo dall'inizio stimato della parola
+_PAUSE_QUIET = 10.0  # dB sotto il volume della riga: qui il cantante non sta cantando
+_PAUSE_MIN = 0.35  # s di pausa, almeno
+_PAUSE_BACK = 8.0  # dB sotto il volume della riga: la voce è tornata (per almeno 0,1 s)
+
+
+def pause_word_starts(lines: list[Line], voice) -> int:
+    """Parole dentro la riga attaccate alla precedente anche se il cantante fa una pausa.
+
+    Whisper chiude una parola dove comincia la successiva: se fra le due il cantante tace (una
+    pausa a metà riga, «Io non so parlar d'amore, … l'emozione»), la parola dopo risultava
+    cominciare mezzo secondo-un secondo prima di quando la si sente. Se poco dopo l'inizio stimato la
+    voce cala sotto il volume della riga e resta giù per una pausa vera, la parola parte dove la voce
+    torna. La parola prima non si allunga: nella pausa non si canta. Restituisce le parole spostate.
+    """
+    import numpy as np
+
+    db, _ = voice
+    hold = int(0.1 / _HOP)
+    fixed = 0
+    for l in lines:
+        if len(l.words) < 2 or l.manual or l.words[0].start < 0:
+            continue
+        lo, hi = int(l.words[0].start / _HOP), int(l.words[-1].end / _HOP)
+        if hi - lo < 5 or hi > len(db):
+            continue
+        ref = float(np.percentile(db[lo:hi], 75))
+        for w in l.words[1:]:
+            if w.start < 0:
+                continue
+            a, lim = int(w.start / _HOP), int((w.end - 0.08) / _HOP)
+            if lim - a < 5:
+                continue
+            seg = db[a:lim]
+            low = seg < ref - _PAUSE_QUIET
+            first = np.flatnonzero(low)
+            if not first.size or first[0] * _HOP > _PAUSE_WITHIN:
+                continue
+            j = k = int(first[0])
+            while k < len(low) and low[k]:
+                k += 1
+            if (k - j) * _HOP < _PAUSE_MIN or k >= len(low):
+                continue
+            back = np.convolve((seg > ref - _PAUSE_BACK).astype(int), np.ones(hold, dtype=int), mode="valid") == hold
+            ts = np.flatnonzero(back[k:]) + k
+            if not ts.size:
+                continue
+            start = (a + int(ts[0])) * _HOP
+            w.start = start
+            if 0 <= w.hold <= start + 0.1:
+                w.hold = -1.0
+            fixed += 1
+    return fixed
+
+
 _INTRO_LINES = 4  # righe al massimo di un'introduzione da togliere
 _INTRO_GAP = 4.0  # s di pausa fra l'introduzione e la canzone vera
 _INTRO_QUIET = 15.0  # dB sotto il canto: voci di sottofondo, parlato (un attacco cantato piano sta sui 10)
@@ -1753,6 +1810,7 @@ def resnap_saved(song_dir: Path) -> int | None:
         # già passato dalla catena intera: ripassarla allungherebbe una seconda volta le note
         # tenute (extend_to_voice parte dalle fini già allungate); si rifà solo quello che è cambiato
         fixed = breath_line_starts(lines, voice)
+        fixed += pause_word_starts(lines, voice)
         out = to_json(lines, data.get("source", ""), data.get("language", ""))
         path.write_text(json.dumps(out, ensure_ascii=False), encoding="utf-8")
         return fixed
@@ -1769,6 +1827,7 @@ def resnap_saved(song_dir: Path) -> int | None:
     if sung:
         fixed += fix_held_notes(lines, voice, sung, data.get("language", ""))
     fixed += breath_line_starts(lines, voice)
+    fixed += pause_word_starts(lines, voice)
     if not data.get("source", "").startswith("manual"):  # il testo scritto a mano resta tutto
         fixed += drop_intro(lines, voice, sung)
     for l in lines:
@@ -2117,6 +2176,7 @@ def build(
             extend_to_voice(lines, voiced, sung)
             fix_held_notes(lines, voiced, sung, language)
             breath_line_starts(lines, voiced)
+            pause_word_starts(lines, voiced)
             if text is None:  # il testo scritto a mano resta tutto
                 drop_intro(lines, voiced, sung)
             return to_json(lines, "manual+whisper" if text is not None else "lrclib+whisper", language)

@@ -431,6 +431,8 @@ export const api = {
   showRanking: () => req("POST", "/api/admin/competition/show"),
   fullscreen: () => req("POST", "/api/admin/fullscreen"),
   mics: () => req<{ mics: Mic[] }>("GET", "/api/mics"),
+  /** quanti microfoni per cantare sono collegati (per tutti i telefoni) */
+  micCount: () => req<{ count: number }>("GET", "/api/mics/count"),
   voice: () => req<VoiceState>("GET", "/api/voice"),
   setVoice: (change: Partial<Pick<VoiceState, "engine" | "autotune" | "strength">>) =>
     req<VoiceState>("POST", "/api/voice", change),

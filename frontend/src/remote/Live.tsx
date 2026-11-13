@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { BarChart3, Clock, Headphones, Mic, Mic2, MicOff, Minus, Music, Pause, Play, Plus, RotateCcw, SkipForward, Sparkles, Square, Trophy, Users, Volume2, VolumeX, Wand2 } from "lucide-react";
-import { api, LyricLine, PlaylistState } from "../shared/api";
+import { api, Entry, LyricLine, PlaylistState } from "../shared/api";
+import { Avatar } from "../shared/Avatar";
 import { LivePlayer, playerTime } from "../shared/live";
 import { Mode, useDj, useJukebox, useMode } from "../shared/mode";
 import { activeIndex, switchTimes, wordFill } from "../shared/lyrics";
 import { currentRemaining, entryStarts, fmtClock, fmtWait, queueTimeline, singersOf, singsIn, useTick } from "../shared/queue";
-import { micLabel, useMics, useMicSetter } from "../shared/mics";
+import { MIC_COLORS, micLabel, useMicCount, useMics, useMicSetter } from "../shared/mics";
 import { useCompetition } from "../shared/competition";
 import { correctionText, strengthLabel, useVoice, useVoiceSetter } from "../shared/voice";
 
@@ -681,6 +682,100 @@ export function EnableVibration() {
   );
 }
 
+// ------------------------------------------------------------------ passaggio del microfono
+const PASS_AFTER_START = 12; // s: l'avviso «Passa il microfono» resta ancora così dopo che il brano dopo è partito
+
+const sameName = (a: string | undefined, b: string) => !!a && !!b && a.trim().toLocaleLowerCase() === b.trim().toLocaleLowerCase();
+
+/** Microfono di `name` in un brano: 0 = rosso (chi ha prenotato), 1 = blu (chi si è unito in duetto). */
+export function micOf(e: Pick<Entry, "singer" | "partner">, name: string): number {
+  return sameName(e.partner, name) && !sameName(e.singer, name) ? 1 : 0;
+}
+
+export interface MicPass {
+  done: Entry; // brano appena finito, in cui `name` cantava
+  next: Entry; // brano dopo
+  to: string; // a chi `name` passa il microfono
+}
+
+/**
+ * A chi passare il microfono a fine brano. Chi aveva il rosso lo passa a chi ha prenotato il brano
+ * dopo; chi aveva il blu (duetto, con due microfoni) lo passa solo se anche il brano dopo è un duetto,
+ * a chi si è unito. Niente se il microfono resta in mano alla stessa persona.
+ */
+function passTarget(done: Entry, next: Entry, name: string, mics: number): string {
+  const to = micOf(done, name) === 0 ? next.singer : mics >= 2 ? next.partner || "" : "";
+  return to && !sameName(to, name) ? to : "";
+}
+
+/**
+ * Passaggio del microfono per chi ha appena cantato: parte appena il brano finisce (mentre la TV
+ * mostra i punteggi) oppure, se il brano è stato interrotto, quando parte quello dopo; dura finché il
+ * brano dopo è partito da PASS_AFTER_START secondi.
+ */
+export function usePassMic(name: string, playlist: PlaylistState, player: LivePlayer, enabled: boolean): MicPass | null {
+  useTick(500);
+  const [pass, setPass] = useState<{ done: Entry; next: Entry; started: number | null } | null>(null);
+  const now = playlist.now_playing;
+  const first = playlist.entries[0] ?? null;
+  const ended = enabled && !!now && !!first && singsIn(now, name) && currentRemaining(playlist, player) <= 1;
+  const prev = useRef(now);
+  useEffect(() => {
+    const before = prev.current;
+    prev.current = now;
+    if (!enabled || !name) return setPass(null);
+    if (now && before && now.id !== before.id) {
+      // è partito un altro brano
+      if (pass && pass.next.id === now.id) setPass({ ...pass, started: Date.now() });
+      else if (singsIn(before, name)) setPass({ done: before, next: now, started: Date.now() }); // interrotto
+      else setPass(null);
+      return;
+    }
+    if (!now) {
+      if (pass) setPass(null); // serata ferma
+      return;
+    }
+    // brano finito, punteggi sulla TV: il brano dopo è il primo in coda (anche se lo spostano)
+    if (ended && (pass?.done.id !== now.id || pass.next.id !== first!.id)) setPass({ done: now, next: first!, started: null });
+  }, [now?.id, first?.id, ended, enabled, name]); // eslint-disable-line react-hooks/exhaustive-deps
+  const mics = useMicCount(!!pass);
+  if (!pass || (pass.started !== null && Date.now() - pass.started > PASS_AFTER_START * 1000)) return null;
+  const to = passTarget(pass.done, pass.next, name, mics);
+  return to ? { done: pass.done, next: pass.next, to } : null;
+}
+
+/** «Passa il microfono a …» a chi ha appena cantato (con vibrazione). */
+export function PassMicAlert({ name, pass }: { name: string; pass: MicPass | null }) {
+  const [dismissed, setDismissed] = useState<string | null>(null);
+  const vibrated = useRef<string | null>(null);
+  // chi canta anche nel brano dopo lo legge nell'avviso «Tocca a te»
+  const show = !!pass && !singsIn(pass.next, name) && dismissed !== pass.done.id;
+  useEffect(() => {
+    if (show && vibrated.current !== pass!.done.id) {
+      vibrated.current = pass!.done.id;
+      vibrate([300, 120, 300]);
+    }
+  }, [show, pass]);
+  if (!show) return null;
+  return (
+    <div className="m-ready m-pass" role="alertdialog" aria-live="assertive">
+      <div className="m-ready-card">
+        <Avatar name={pass!.to} className="big m-pass-face" />
+        <div className="m-ready-title">PASSA IL MICROFONO A</div>
+        <div className="m-pass-name">{pass!.to}</div>
+        {pass!.next.song && (
+          <div className="m-ready-song">
+            canta «{pass!.next.song.title}»{pass!.next.partner && ` in duetto`}
+          </div>
+        )}
+        <button className="btn btn-primary" onClick={() => setDismissed(pass!.done.id)}>
+          Fatto
+        </button>
+      </div>
+    </div>
+  );
+}
+
 /**
  * Avviso a tutto schermo negli ultimi 30 secondi prima del proprio turno (con vibrazione),
  * e passaggio automatico alla scheda Testo quando il proprio brano parte.
@@ -691,12 +786,15 @@ export function GetReadyAlert({
   player,
   synced,
   onStage,
+  pass,
 }: {
   name: string;
   playlist: PlaylistState;
   player: LivePlayer;
   synced: boolean;
   onStage: () => void;
+  /** anche chi canta adesso deve passare un microfono (duetto seguito da un altro duetto) */
+  pass: MicPass | null;
 }) {
   useTick(200);
   const remaining = secondsToMyTurn(name, playlist, player);
@@ -704,6 +802,7 @@ export function GetReadyAlert({
   const show = remaining !== null && remaining <= GET_READY;
   const zero = show && remaining! <= 1;
   const [dismissed, setDismissed] = useState<string | null>(null);
+  const mics = useMicCount(show);
   const alerted = useRef<string | null>(null);
   const alertedZero = useRef<string | null>(null);
 
@@ -768,6 +867,12 @@ export function GetReadyAlert({
           </div>
         )}
         {mate && <div className="m-ready-duet">🎤 In duetto con {mate}</div>}
+        {pass && singsIn(first, name) && (
+          <div className="m-ready-duet">Prima passa il tuo microfono a {pass.to}</div>
+        )}
+        <div className={`m-ready-mic ${mics >= 2 ? `mic-${micOf(first!, name) ? "blue" : "red"}` : ""}`}>
+          <Mic size={18} /> Prendi il microfono{mics >= 2 && ` ${MIC_COLORS[micOf(first!, name)]}`}
+        </div>
         <div className="m-ready-count">{zero ? "VAI!" : secs}</div>
         <EnableVibration />
         <div className="progress m-ready-bar">

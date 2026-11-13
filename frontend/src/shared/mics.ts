@@ -68,6 +68,29 @@ export function useMicSetter(onError: (msg: string) => void) {
 /** Con due microfoni si distinguono dal colore (come quelli veri): il primo è il rosso, il secondo il blu. */
 export const MIC_NAMES = ["Microfono Rosso", "Microfono Blu"];
 
+/** Colore del microfono di chi canta: chi ha prenotato prende il rosso, chi si è unito in duetto il blu. */
+export const MIC_COLORS = ["Rosso", "Blu"];
+
+/**
+ * Quanti microfoni per cantare sono collegati al PC (0 = non si sa ancora). Si chiede al PC solo
+ * quando serve (`active`), cioè quando c'è da dire a qualcuno quale microfono prendere o passare.
+ */
+export function useMicCount(active: boolean): number {
+  const [count, setCount] = useState(0);
+  useEffect(() => {
+    if (!active) return;
+    let alive = true;
+    api
+      .micCount()
+      .then((r) => alive && setCount(r.count))
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [active]);
+  return count;
+}
+
 /** Nome da mostrare: «Microfono» o, con due microfoni, «Microfono Rosso» / «Microfono Blu». */
 export function micLabel(m: Mic, count: number): string {
   return count > 1 ? (MIC_NAMES[m.index] ?? `Microfono ${m.index + 1}`) : "Microfono";

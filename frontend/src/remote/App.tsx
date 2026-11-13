@@ -81,6 +81,8 @@ import {
   entryStarts,
   fmtWait,
   GetReadyAlert,
+  PassMicAlert,
+  usePassMic,
   LyricsTab,
   TurnBanner,
   MyKeyCard,
@@ -204,6 +206,8 @@ export function App() {
     return () => ro.disconnect();
   }, [name]);
   const jukebox = useJukebox();
+  // a fine brano: a chi passare il microfono (solo in Karaoke)
+  const pass = usePassMic(name, playlist, player, synced && !jukebox);
   const locked = useSettings()?.locked ?? false;
   const mode = useMode();
   const dj = useDj(); // modalità DJ: solo lui (e gli amministratori) aggiunge brani
@@ -446,12 +450,14 @@ export function App() {
         )}
       </nav>
       {!jukebox && <QuizScreen name={name} />}
+      {!jukebox && <PassMicAlert name={name} pass={pass} />}
       {!jukebox && <GetReadyAlert
         name={name}
         playlist={playlist}
         player={player}
         synced={synced}
         onStage={() => setTab("lyrics")}
+        pass={pass}
       />}
       {profileOpen && (
         <ProfileSheet

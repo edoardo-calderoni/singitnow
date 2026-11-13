@@ -731,6 +731,13 @@ async def get_mics():
     return {"mics": await run_in_threadpool(mics.list_mics)}
 
 
+@app.get("/api/mics/count")
+async def mic_count():
+    """Quanti microfoni per cantare sono collegati (per tutti i telefoni: con due, «Prendi il
+    microfono Rosso / Blu» e «Passa il microfono a …»)."""
+    return {"count": len(await run_in_threadpool(mics.list_mics))}
+
+
 @app.post("/api/mics/{index}", dependencies=[Depends(admin.require_control)])
 async def set_mic(index: int, req: MicReq):
     try:

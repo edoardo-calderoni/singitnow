@@ -33,6 +33,8 @@ log = logging.getLogger(__name__)
 FADE = 64  # campioni di dissolvenza su buchi e salti (~1,3 ms): niente scatti udibili
 TARGET_MIN = 3 * BLOCK  # margine iniziale fra microfono e casse (15 ms)
 TARGET_MAX = 10 * BLOCK  # margine massimo dopo i buchi (50 ms)
+CALM = 10 * SR  # campioni senza buchi dopo i quali il margine scende di un blocco (10 s)
+QUIET = 0.01  # sotto questo picco il blocco è silenzio: lì il salto avanti non si sente
 UPGRADE_EVERY = 20.0  # s: ogni quanto riprovare le casse in modalità esclusiva se si è rimasti sulla condivisa
 
 
@@ -42,7 +44,8 @@ class _Ring:
     In WASAPI condiviso Windows consegna l'audio a pacchetti (di solito 10 ms), e microfono e casse
     non arrivano mai allo stesso istante: la coda tiene un margine (`target`) per assorbire questi
     sbalzi. Se si svuota lo stesso, la voce sfuma invece di interrompersi di colpo e il margine
-    cresce; se si riempie troppo (orologi diversi fra microfono e casse) si salta avanti con una
+    cresce; dopo 10 s senza buchi riscende di un blocco alla volta, così un buco isolato non lascia
+    la voce in ritardo per tutta la serata. Se si riempie troppo (orologi diversi fra microfono e casse) si salta avanti con una
     dissolvenza incrociata. Senza dissolvenze ogni buco o salto è uno scatto, e tanti scatti di
     fila si sentono come un fruscio forte sulla voce.
     """
@@ -55,6 +58,12 @@ class _Ring:
         self.playing = False  # False = si aspetta di avere il margine prima di ripartire
         self.underruns = 0
         self.skips = 0
+        self.calm = 0  # campioni letti dall'ultimo buco (o dall'ultima discesa del margine)
+        # ritardo in più rispetto al margine: è il minimo su mezzo secondo, perché fra un pacchetto
+        # e l'altro del microfono la coda oscilla di suo e quell'oscillazione non va tolta
+        self.low = RING
+        self.span = 0
+        self.extra = 0
         self._ramp_in = np.linspace(0.0, 1.0, FADE, dtype=np.float32)
         self._ramp_out = self._ramp_in[::-1].copy()
 
@@ -87,6 +96,7 @@ class _Ring:
             # buco: quel che c'è sfuma a zero, poi si aspetta un margine più ampio
             self.underruns += 1
             self.target = min(TARGET_MAX, self.target + BLOCK)
+            self.calm = 0
             self.playing = False
             m = min(avail, FADE)
             if m <= 0:
@@ -95,11 +105,29 @@ class _Ring:
             out[:m] = self._get(self.r, m) * self._ramp_out[FADE - m :]
             self.r += m
             return out
-        if avail > self.target + n + 4 * BLOCK:
-            # troppo ritardo accumulato: salto avanti al margine giusto con dissolvenza incrociata
+        self.calm += n
+        if self.calm >= CALM and self.target > TARGET_MIN:
+            # nessun buco da un po': il margine scende di un blocco
+            self.target -= BLOCK
+            self.calm = 0
+        excess = avail - (self.target + n)
+        self.low = min(self.low, excess)
+        self.span += n
+        if self.span >= SR // 2:
+            self.extra = max(0, self.low)
+            self.low, self.span = RING, 0
+        jump = 0
+        if excess > 4 * BLOCK:
+            jump = excess  # troppo ritardo accumulato: subito al margine giusto
+        elif self.extra >= BLOCK and float(np.abs(self._get(self.r, n)).max(initial=0.0)) < QUIET:
+            jump = self.extra  # ritardo in più dopo una discesa del margine: si toglie nel silenzio
+        if jump:
+            # salto avanti con dissolvenza incrociata
             self.skips += 1
+            self.extra = 0
+            self.low, self.span = RING, 0
             old = self._get(self.r, FADE)
-            self.r = self.w - self.target - n
+            self.r += jump
             out = self._get(self.r, n)
             out[:FADE] = old * self._ramp_out + out[:FADE] * self._ramp_in
             self.r += n

@@ -803,7 +803,8 @@ body {
   place-items: center;
   /* la colonna non si allarga oltre lo schermo anche se il contenuto vorrebbe stare su una riga */
   grid-template-columns: minmax(0, 1fr);
-  padding: 16px;
+  /* l'app Android disegna sotto la barra di stato e quella di navigazione: si sta fuori da tutte e due */
+  padding: max(16px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom));
   background: rgba(5, 5, 12, 0.8);
   backdrop-filter: blur(8px);
 }
@@ -818,6 +819,10 @@ body {
   border-radius: 22px;
   background: var(--surface, #14141f);
   border: 1px solid var(--border-strong, rgba(255, 255, 255, 0.15));
+}
+/* se la finestra è più alta dello schermo i pezzi non si schiacciano (scorre il contenuto) */
+.m-sheet-card > * {
+  flex-shrink: 0;
 }
 .m-sheet-card .field {
   width: 100%;
@@ -2071,8 +2076,37 @@ body {
 
 /* Profilo: esibizioni e record di tutte le serate */
 .m-profile-card {
-  max-height: calc(100dvh - 32px);
+  max-height: calc(100dvh - max(16px, env(safe-area-inset-top)) - max(16px, env(safe-area-inset-bottom)));
+  overflow: hidden;
+  padding-bottom: 0;
+}
+/* foto, nome, cognome e bottoni restano sempre visibili in alto */
+.m-profile-top {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  width: 100%;
+}
+.m-profile-top > * {
+  flex-shrink: 0;
+}
+/* sotto: admin, statistiche, brani e registrazioni, che scorrono */
+.m-profile-rest {
+  flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
+  overscroll-behavior: contain;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 16px;
+  width: 100%;
+  padding: 16px 0 18px;
+  border-top: 1px solid var(--border, rgba(255, 255, 255, 0.08));
+}
+.m-profile-rest > * {
+  flex-shrink: 0;
 }
 .m-profile-history {
   display: flex;

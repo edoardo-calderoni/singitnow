@@ -667,48 +667,53 @@ function ProfileSheet({
           onSave(n.trim(), l.trim(), newPhoto);
         }}
       >
-        <div className="m-sheet-title">Il tuo profilo</div>
-        <ProfileHistory first={first} last={last} />
-        <MyRecordings first={first} last={last} />
-        <PhotoPicker
-          preview={preview}
-          onPick={setNewPhoto}
-          onRemove={() => setNewPhoto(null)}
-        />
-        <div className="field field-lg">
-          <User size={20} />
-          <input placeholder="Nome" value={n} onChange={(e) => setN(e.target.value)} maxLength={30} />
-        </div>
-        <div className="field field-lg">
-          <User size={20} />
-          <input placeholder="Cognome" value={l} onChange={(e) => setL(e.target.value)} maxLength={30} />
-        </div>
-        <AdminSwitch
-          on={admin}
-          name={n.trim()}
-          onLogin={() => {
-            setAdmin(true);
-            onAdminChange(true); // password giusta: si è subito amministratori
-          }}
-          onOff={() => setAdmin(false)} // si esce salvando il profilo
-        />
-        <div className="m-sheet-actions">
-          <button type="button" className="btn btn-ghost" onClick={onClose}>
-            Annulla
+        {/* fisso in alto: foto, nome e cognome, Annulla / Salva / Esci; sotto scorre tutto il resto */}
+        <div className="m-profile-top">
+          <div className="m-sheet-title">Il tuo profilo</div>
+          <PhotoPicker
+            preview={preview}
+            onPick={setNewPhoto}
+            onRemove={() => setNewPhoto(null)}
+          />
+          <div className="field field-lg">
+            <User size={20} />
+            <input placeholder="Nome" value={n} onChange={(e) => setN(e.target.value)} maxLength={30} />
+          </div>
+          <div className="field field-lg">
+            <User size={20} />
+            <input placeholder="Cognome" value={l} onChange={(e) => setL(e.target.value)} maxLength={30} />
+          </div>
+          <div className="m-sheet-actions">
+            <button type="button" className="btn btn-ghost" onClick={onClose}>
+              Annulla
+            </button>
+            <button className="btn btn-primary" disabled={!n.trim() || !l.trim()}>
+              Salva
+            </button>
+          </div>
+          <button
+            type="button"
+            className="btn btn-ghost m-logout"
+            onClick={() => {
+              if (confirm("Vuoi uscire dalla festa? Dovrai inserire di nuovo nome e cognome per rientrare.")) onLogout();
+            }}
+          >
+            <LogOut size={18} /> Esci
           </button>
-          <button className="btn btn-primary" disabled={!n.trim() || !l.trim()}>
-            Salva
-          </button>
         </div>
-        <button
-          type="button"
-          className="btn btn-ghost m-logout"
-          onClick={() => {
-            if (confirm("Vuoi uscire dalla festa? Dovrai inserire di nuovo nome e cognome per rientrare.")) onLogout();
-          }}
-        >
-          <LogOut size={18} /> Esci
-        </button>
+        <div className="m-profile-rest">
+          <AdminSwitch
+            on={admin}
+            name={n.trim()}
+            onLogin={() => {
+              setAdmin(true);
+              onAdminChange(true); // password giusta: si è subito amministratori
+            }}
+            onOff={() => setAdmin(false)} // si esce salvando il profilo
+          />
+          <ProfileHistory first={first} last={last} />
+          <MyRecordings first={first} last={last} />
+        </div>
       </form>
     </div>
   );

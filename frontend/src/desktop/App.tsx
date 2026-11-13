@@ -17,7 +17,7 @@ import { ResultsHost, useResultsOpen, winnerJustCelebrated } from "./ResultsPane
 import { BackgroundMusic } from "./BackgroundMusic";
 import { Splash, useSplash } from "../shared/Splash";
 import { CompetitionSwitch, RankingCorner, RankingDialog, WinnerScreen } from "./Competition";
-import { Participants } from "./Participants";
+import { JoinCard, Participants } from "./Participants";
 import { EveningStatsPanel, StatsButton } from "./EveningStats";
 import { EveningButton, EveningNotice } from "./Evening";
 import { useEvening } from "../shared/evening";
@@ -255,13 +255,17 @@ export function App() {
           <ModeSeg onError={setToast} />
           <DjPicker users={users} onError={setToast} />
           <CompetitionSwitch onShowRanking={() => setRankingOpen(true)} />
-          {!jukebox && <StatsButton onClick={() => setStatsOpen(true)} />}
-          <EveningButton playlist={playlist} songs={songs} onError={setToast} />
+          {/* Statistiche e Concludi la serata sulla stessa riga */}
+          <div className="evening-row">
+            {!jukebox && <StatsButton onClick={() => setStatsOpen(true)} />}
+            <EveningButton playlist={playlist} songs={songs} onError={setToast} />
+          </div>
         </div>
 
-        {/* QR code per entrare e, sotto, chi è collegato dal telefono in questo momento;
-            lo spazio libero va in fondo, sopra lo stato della connessione */}
-        <Participants users={users} qrSvg={info?.qr_svg} />
+        {/* QR code per scaricare l'app ed entrare e, in una card a parte, chi è collegato dal
+            telefono in questo momento; lo spazio libero va in fondo, sopra lo stato della connessione */}
+        {info?.qr_svg && <JoinCard qrSvg={info.qr_svg} />}
+        <Participants users={users} />
 
         <div className="sidebar-spacer" />
         <div className={`conn ${connected ? "on" : ""}`}>

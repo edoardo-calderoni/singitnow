@@ -90,12 +90,33 @@ body {
 .sidebar-spacer {
   flex: 1;
 }
+/* QR code per scaricare l'app ed entrare: card a sé sopra i partecipanti, grande abbastanza da
+   inquadrarlo dal divano, testo sotto */
 .join-card {
-  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  flex: none;
+  padding: 14px;
   border-radius: 18px;
   background: var(--surface);
   border: 1px solid var(--border);
   text-align: center;
+}
+.join-qr {
+  width: min(180px, 100%);
+}
+.join-qr svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 8px;
+}
+.join-card span {
+  font-size: 13px;
+  line-height: 1.35;
+  color: var(--text-2);
 }
 /* partecipanti collegati dal telefono, sotto il QR code: con tanti nomi la lista scorre */
 .participants {
@@ -108,33 +129,6 @@ body {
   border-radius: 18px;
   background: var(--surface);
   border: 1px solid var(--border);
-}
-/* QR code d'ingresso sopra la lista: grande abbastanza da inquadrarlo dal divano, testo sotto */
-.participants-join {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 10px;
-  flex: none;
-  margin-bottom: 12px;
-  padding-bottom: 12px;
-  border-bottom: 1px solid var(--border);
-  text-align: center;
-}
-.participants-qr {
-  width: min(180px, 100%);
-  flex: none;
-}
-.participants-qr svg {
-  display: block;
-  width: 100%;
-  height: auto;
-  border-radius: 8px;
-}
-.participants-join span {
-  font-size: 13px;
-  line-height: 1.35;
-  color: var(--text-2);
 }
 .participants-title {
   display: flex;
@@ -3067,11 +3061,21 @@ body {
 }
 
 /* Statistiche della serata */
-.stats-btn {
-  /* centrato sotto la Competizione, un po' staccato dall'interruttore */
+/* Statistiche e Concludi la serata affiancati, sotto la Competizione; se non c'è spazio vanno a capo */
+.evening-row {
   display: flex;
-  width: fit-content;
-  margin: 14px auto 0;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px;
+  margin-top: 14px;
+}
+.evening-row .btn {
+  gap: 4px;
+  padding: 0 8px; /* tutti e due su una riga anche nella barra laterale (310 px) */
+}
+.evening-row .evening-box {
+  flex-basis: 100%;
+  margin-top: 0;
 }
 .modal.stats-modal {
   width: min(920px, 100%);
@@ -4636,11 +4640,6 @@ body {
 }
 
 /* ---------- Fine della serata: pulsante nella barra laterale, avviso sulla TV */
-.evening-btn {
-  display: flex;
-  width: fit-content;
-  margin: 8px auto 0;
-}
 .evening-box {
   margin-top: 12px;
   padding: 10px 12px;

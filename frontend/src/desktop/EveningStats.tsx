@@ -11,7 +11,7 @@ const ICONS: Record<StatsCard["key"], typeof Hand> = { applause: Hand, pitch: Mi
 export function StatsButton({ onClick }: { onClick: () => void }) {
   return (
     <button className="btn btn-ghost btn-sm stats-btn" onClick={onClick}>
-      <BarChart3 size={15} /> Statistiche della serata
+      <BarChart3 size={15} /> Statistiche
     </button>
   );
 }

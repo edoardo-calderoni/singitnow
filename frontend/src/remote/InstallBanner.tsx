@@ -12,7 +12,8 @@ declare global {
       /** dalla versione 4: avviso «Tocca a te!» anche a schermo spento */
       setIdentity?(first: string, last: string): void;
       clearIdentity?(): void;
-      /** dalla versione 6: salva un file creato dalla pagina in Immagini/SingITnow */
+      /** dalla versione 6: salva un file creato dalla pagina in Immagini/SingITnow
+       *  (dalla 9: a schermo spento avvisa anche quale microfono prendere e a chi passarlo) */
       saveFile?(base64: string, name: string, mime: string): boolean;
     };
   }
@@ -49,8 +50,8 @@ export function InstallBanner() {
       .catch(() => {});
   }, [android, inApp]);
 
-  // app Android vecchia (senza download delle registrazioni): si propone l'aggiornamento
-  const oldApp = inApp && Number(window.SingITnowApp?.version() ?? 0) < 6;
+  // app Android vecchia (senza avvisi del microfono a schermo spento): si propone l'aggiornamento
+  const oldApp = inApp && Number(window.SingITnowApp?.version() ?? 0) < 9;
   if (oldApp && !hidden)
     return (
       <div className="m-install">
@@ -60,7 +61,7 @@ export function InstallBanner() {
         <img src="/icon.svg" alt="" />
         <div className="m-install-body">
           <b>Aggiorna l'app SingITnow</b>
-          <span>Con la nuova versione scarichi le registrazioni delle tue esibizioni, salvi le statistiche della serata e il telefono ti avvisa quando tocca a te, anche a schermo spento.</span>
+          <span>Con la nuova versione il telefono ti avvisa quando tocca a te, quale microfono prendere e a chi passarlo a fine brano, anche a schermo spento.</span>
           <button
             className="btn btn-primary btn-sm"
             onClick={() => window.SingITnowApp?.openUrl?.(`${location.origin}/download/SingITnow.apk`)}

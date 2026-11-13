@@ -29,6 +29,8 @@ class Playlist:
         self._lock = threading.RLock()
         self._entries: list[Entry] = []
         self.now_playing: Entry | None = None
+        # brano appena lasciato per passare al successivo (e quando): per il «Passa il microfono»
+        self.previous: tuple[Entry, float] | None = None
         # Richieste di brani non ancora in libreria: song_id -> cantanti in attesa
         self._waiting: dict[str, list[str]] = {}
         # quando è stata fatta ogni prenotazione in preparazione (stesso ordine dei cantanti): quando il
@@ -463,6 +465,8 @@ class Playlist:
                 entry = next((e for e in self._entries if library.get(e.song_id)), None)
             if entry:
                 self._entries.remove(entry)
+            if self.now_playing is not None and entry is not None:
+                self.previous = (self.now_playing, time.time())
             self.now_playing = entry
             self._changed()
             return entry

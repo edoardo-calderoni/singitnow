@@ -26,8 +26,9 @@ import java.util.Scanner;
  *
  * Con lo schermo spento Android sospende la pagina di SingITnow (e la sua connessione con il PC):
  * questo servizio resta attivo (con una notifica fissa, come vuole Android) e ogni pochi secondi
- * chiede al PC se tocca a chi usa il telefono. Quando tocca a lui accende lo schermo, vibra e mostra
- * una notifica: toccandola si apre SingITnow.
+ * chiede al PC se tocca a chi usa il telefono. Quando tocca a lui (o quando, finito il suo brano, deve
+ * passare il microfono) accende lo schermo, vibra e mostra una notifica: toccandola si apre SingITnow.
+ * Titolo e testo della notifica li prepara il PC (campi alert_* di /api/turn).
  *
  * Si ferma uscendo dalla festa («Esci» nel profilo), con «Smetti» nella notifica, o se il PC non
  * risponde per mezz'ora (festa finita).
@@ -105,6 +106,7 @@ public class TurnService extends Service {
         SharedPreferences prefs = getSharedPreferences("singitnow", MODE_PRIVATE);
         String notifiedNext = prefs.getString("turn_next", "");
         String notifiedStage = prefs.getString("turn_stage", "");
+        String notifiedAlert = prefs.getString("turn_alert", "");
         long lastOk = System.currentTimeMillis();
         while (running) {
             String base = prefs.getString("turn_base", null);
@@ -117,7 +119,15 @@ public class TurnService extends Service {
                 String state = t.optString("state");
                 String entry = t.optString("entry");
                 String title = t.optString("title");
-                if ("next".equals(state) && !entry.equals(notifiedNext)) {
+                String alertId = t.optString("alert_id");
+                if (!alertId.isEmpty()) {
+                    // il PC prepara la notifica (tocca a te, quale microfono prendere, a chi passarlo)
+                    if (!alertId.equals(notifiedAlert)) {
+                        notifiedAlert = alertId;
+                        prefs.edit().putString("turn_alert", alertId).apply();
+                        alert(t.optString("alert_title"), t.optString("alert_text"));
+                    }
+                } else if ("next".equals(state) && !entry.equals(notifiedNext)) {
                     notifiedNext = entry;
                     prefs.edit().putString("turn_next", entry).apply();
                     alert("Preparati, tocca a te!", "«" + title + "» parte tra poco: vai verso il palco 🎤");

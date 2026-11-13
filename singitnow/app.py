@@ -7,6 +7,7 @@ import json
 import logging
 import re
 import threading
+import time
 from pathlib import Path
 from contextlib import asynccontextmanager
 
@@ -735,7 +736,7 @@ async def get_mics():
 async def mic_count():
     """Quanti microfoni per cantare sono collegati (per tutti i telefoni: con due, «Prendi il
     microfono Rosso / Blu» e «Passa il microfono a …»)."""
-    return {"count": len(await run_in_threadpool(mics.list_mics))}
+    return {"count": await run_in_threadpool(_mic_count)}
 
 
 @app.post("/api/mics/{index}", dependencies=[Depends(admin.require_control)])
@@ -1072,34 +1073,107 @@ def _ranking() -> list[dict]:
 
 
 TURN_NOTICE = 60.0  # s: «Preparati, tocca a te» quando al brano in corso ne mancano meno di così
+PASS_AFTER_START = 12.0  # s: «Passa il microfono» ancora così dopo che il brano dopo è partito
+MIC_COLORS = ("Rosso", "Blu")  # chi ha prenotato prende il rosso, chi si è unito in duetto il blu
+
+_mic_count_cache: tuple[float, int] = (0.0, 0)
+
+
+def _mic_count() -> int:
+    """Microfoni per cantare collegati (riletto al massimo ogni 5 s: lo chiedono tutti i telefoni)."""
+    global _mic_count_cache
+    at, n = _mic_count_cache
+    if time.monotonic() - at > 5:
+        n = len(mics.list_mics())
+        _mic_count_cache = (time.monotonic(), n)
+    return n
+
+
+def _same(a: str | None, b: str) -> bool:
+    return bool(a) and bool(b) and a.strip().casefold() == b.strip().casefold()
+
+
+def _sings(e: dict | None, name: str) -> bool:
+    return bool(e) and (_same(e.get("singer"), name) or _same(e.get("partner"), name))
+
+
+def _mic_of(e: dict, name: str) -> int:
+    """0 = microfono rosso (chi ha prenotato), 1 = blu (chi si è unito in duetto)."""
+    return 1 if _same(e.get("partner"), name) and not _same(e.get("singer"), name) else 0
+
+
+def _pass_to(done: dict, nxt: dict, name: str, n_mics: int) -> str:
+    """A chi `name` passa il microfono a fine brano: il rosso a chi ha prenotato il brano dopo; il blu
+    (duetto, con due microfoni) solo se anche il brano dopo è un duetto, a chi si è unito."""
+    if _mic_of(done, name) == 0:
+        to = nxt.get("singer") or ""
+    else:
+        to = (nxt.get("partner") or "") if n_mics >= 2 else ""
+    return "" if _same(to, name) else to
 
 
 @app.get("/api/turn")
 def my_turn(first: str = "", last: str = ""):
     """Tocca a questa persona? Lo chiede l'app Android anche a schermo spento, per svegliare il
     telefono con una notifica: "stage" = il suo brano sta suonando, "next" = è il prossimo e manca
-    poco, "" = niente."""
+    poco, "ready" = il brano prima è finito (punteggi sulla TV), "pass" = ha appena cantato e deve
+    passare il microfono, "" = niente. `alert_id`, `alert_title` e `alert_text` sono la notifica da
+    mostrare (una volta per `alert_id`), così i testi si cambiano qui senza aggiornare l'app."""
     name = people.display_of(first, last) or people.clean(first)
     snap = playlist.snapshot()
-    sings = lambda e: bool(e) and name.casefold() in {  # noqa: E731
-        (e.get("singer") or "").casefold(),
-        (e.get("partner") or "").casefold(),
-    }
     now, entries = snap["now_playing"], snap["entries"]
+    nxt = entries[0] if entries else None
+    left = _now_remaining() if now else 0.0
+    ended = bool(now) and left <= 1.0  # brano finito, la TV mostra i punteggi
     state, entry = "", None
-    if name and sings(now):
+    # chi ha appena cantato e a chi passa il microfono
+    done, done_next = None, None
+    if name and ended and nxt and _sings(now, name):
+        done, done_next = now, nxt
+    elif name and now and playlist.previous and not ended:
+        prev, at = playlist.previous
+        prev_d = {"id": prev.id, "singer": prev.singer, "partner": prev.partner}
+        if prev_d["id"] != now["id"] and time.time() - at <= PASS_AFTER_START and _sings(prev_d, name):
+            done, done_next = prev_d, now  # brano finito o interrotto, il successivo è appena partito
+    n_mics = _mic_count() if name and (done or _sings(now, name) or _sings(nxt, name)) else 0
+    pass_to = _pass_to(done, done_next, name, n_mics) if done else ""
+
+    if name and _sings(now, name) and not ended:
         state, entry = "stage", now
-    elif name and entries and sings(entries[0]):
-        left = _now_remaining() if now else 0.0
-        if not now or left <= TURN_NOTICE:
-            state, entry = "next", entries[0]
+    elif name and nxt and _sings(nxt, name) and (not now or left <= TURN_NOTICE):
+        state, entry = ("ready" if ended else "next"), nxt
+    elif pass_to:
+        state, entry = "pass", done_next
     song = (entry or {}).get("song") or {}
+    title = song.get("title", "")
+    mic = ""
+    if entry and state != "pass":
+        mic = "il microfono " + MIC_COLORS[_mic_of(entry, name)] if n_mics >= 2 else "il microfono"
+    alert_title = alert_text = ""
+    if state == "next":
+        alert_title = "Preparati, tocca a te!"
+        alert_text = f"«{title}» parte tra poco: prendi {mic} 🎤"
+    elif state == "ready":
+        alert_title = f"Tocca a te! Prendi {mic} 🎤"
+        alert_text = f"Prima passa il tuo microfono a {pass_to} · «{title}»" if pass_to else f"Sta per partire «{title}»"
+    elif state == "stage":
+        alert_title = "È il tuo turno: sali sul palco!"
+        alert_text = f"Sta partendo «{title}»: prendi {mic} 🎤"
+    elif state == "pass":
+        alert_title = f"Passa il microfono a {pass_to} 🎤"
+        alert_text = f"Il prossimo brano è «{title}»"
+    alert_id = f"{state}:{(done or {}).get('id', '') if state == 'pass' else (entry or {}).get('id', '')}" if state else ""
     return {
         "name": name,
         "state": state,
         "entry": (entry or {}).get("id", ""),
-        "title": song.get("title", ""),
+        "title": title,
         "artist": song.get("artist", ""),
+        "mic": MIC_COLORS[_mic_of(entry, name)] if mic and n_mics >= 2 else "",
+        "pass_to": pass_to,
+        "alert_id": alert_id,
+        "alert_title": alert_title,
+        "alert_text": alert_text,
     }
 
 

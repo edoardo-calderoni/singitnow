@@ -470,7 +470,9 @@ public class MainActivity extends Activity {
 
         @JavascriptInterface
         public String version() {
-            return "6"; // 6: download delle registrazioni e salvataggio delle immagini
+            // 6: download delle registrazioni e salvataggio delle immagini
+            // 9: a schermo spento, quale microfono prendere e a chi passarlo (notifiche preparate dal PC)
+            return "9";
         }
 
         /**

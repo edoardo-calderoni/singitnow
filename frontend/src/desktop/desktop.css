@@ -3436,6 +3436,309 @@ body {
     transform: scale(0.92);
   }
 }
+/* bagliori colorati che si muovono piano dietro a tutte le fasi del quiz */
+.quiz-glow {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  filter: blur(9vmin);
+  opacity: 0.55;
+}
+.quiz-glow i {
+  position: absolute;
+  width: 55vmin;
+  height: 55vmin;
+  border-radius: 50%;
+  background: var(--pink);
+  left: 8%;
+  top: 12%;
+  animation: quiz-drift 14s ease-in-out infinite alternate;
+}
+.quiz-glow i:nth-child(2) {
+  background: var(--violet);
+  left: auto;
+  right: 6%;
+  top: 30%;
+  animation-duration: 17s;
+  animation-delay: -5s;
+}
+.quiz-glow i:nth-child(3) {
+  background: var(--cyan);
+  left: 35%;
+  top: auto;
+  bottom: -10%;
+  opacity: 0.6;
+  animation-duration: 20s;
+  animation-delay: -9s;
+}
+@keyframes quiz-drift {
+  to {
+    transform: translate(12vmin, -8vmin) scale(1.25);
+  }
+}
+.quiz > :not(.quiz-glow) {
+  z-index: 1;
+}
+
+/* ---- introduzione: annuncio, poi conto alla rovescia a numeroni */
+.quiz-intro {
+  width: 100%;
+  min-height: 100%;
+  justify-content: center;
+}
+.quiz-intro .quiz-title {
+  transition: font-size 0.6s cubic-bezier(0.2, 0.9, 0.3, 1), margin 0.6s;
+}
+.quiz-intro.counting .quiz-title {
+  font-size: 5vmin;
+}
+.quiz-call {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3vh;
+  animation: quiz-option-in 0.6s cubic-bezier(0.2, 1.4, 0.4, 1) 0.6s both;
+}
+.quiz-phone {
+  position: relative;
+  width: 17vmin;
+  height: 17vmin;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--grad);
+  box-shadow: 0 0 6vmin rgba(255, 61, 154, 0.55);
+}
+.quiz-phone svg {
+  width: 8.5vmin;
+  height: 8.5vmin;
+  animation: quiz-buzz 1.4s ease-in-out infinite;
+}
+@keyframes quiz-buzz {
+  0%,
+  45%,
+  100% {
+    transform: rotate(0);
+  }
+  5%,
+  15%,
+  25%,
+  35% {
+    transform: rotate(-14deg);
+  }
+  10%,
+  20%,
+  30%,
+  40% {
+    transform: rotate(14deg);
+  }
+}
+.quiz-phone-wave {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 0.5vmin solid rgba(255, 255, 255, 0.7);
+  animation: quiz-wave-out 1.4s ease-out infinite;
+}
+@keyframes quiz-wave-out {
+  from {
+    transform: scale(1);
+    opacity: 0.9;
+  }
+  to {
+    transform: scale(1.9);
+    opacity: 0;
+  }
+}
+.quiz-call-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1.2vh;
+}
+.quiz-call-text b {
+  font-family: var(--font-display);
+  font-size: 7vmin;
+  font-weight: 900;
+  line-height: 1.05;
+}
+.quiz-call-text span {
+  font-size: 3vmin;
+  color: var(--text-2);
+}
+.quiz-kind {
+  display: inline-flex;
+  align-items: center;
+  gap: 1vmin;
+  padding: 0.8vmin 2.2vmin;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+  border: 0.25vmin solid var(--border-strong);
+  font-family: var(--font-display);
+  font-size: 2.6vmin;
+  font-weight: 700;
+}
+.quiz-kind svg {
+  width: 2.8vmin;
+  height: 2.8vmin;
+  color: var(--cyan);
+}
+.quiz-countdown {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 3vh;
+}
+.quiz-beat {
+  position: relative;
+  width: 56vmin;
+  height: 50vmin;
+  display: grid;
+  place-items: center;
+}
+/* lampo dietro al numero, più caldo verso l'1 */
+.quiz-beat::before {
+  content: "";
+  position: absolute;
+  inset: -20%;
+  border-radius: 50%;
+  background: radial-gradient(
+    circle,
+    rgba(255, 61, 154, calc(0.35 + 0.35 * var(--heat))),
+    rgba(139, 92, 246, 0.15) 45%,
+    transparent 70%
+  );
+  animation: quiz-flash 1s ease-out both;
+}
+@keyframes quiz-flash {
+  from {
+    opacity: 1;
+    transform: scale(0.6);
+  }
+  to {
+    opacity: 0.25;
+    transform: scale(1.1);
+  }
+}
+.quiz-shock {
+  position: absolute;
+  width: 34vmin;
+  height: 34vmin;
+  border-radius: 50%;
+  border: 0.8vmin solid rgba(255, 255, 255, 0.85);
+  box-shadow: 0 0 4vmin rgba(255, 61, 154, 0.8), inset 0 0 4vmin rgba(139, 92, 246, 0.6);
+  animation: quiz-shock 0.9s cubic-bezier(0.1, 0.7, 0.3, 1) both;
+}
+.quiz-shock.late {
+  border-color: rgba(34, 211, 238, 0.7);
+  animation-delay: 0.15s;
+}
+@keyframes quiz-shock {
+  from {
+    transform: scale(0.4);
+    opacity: 1;
+  }
+  to {
+    transform: scale(2.3);
+    opacity: 0;
+  }
+}
+.quiz-big {
+  position: relative;
+  font-family: var(--font-display);
+  font-size: 40vmin;
+  font-weight: 900;
+  line-height: 1;
+  font-variant-numeric: tabular-nums;
+  background: var(--grad);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 0 calc(2vmin + 4vmin * var(--heat)) rgba(255, 61, 154, calc(0.5 + 0.4 * var(--heat))));
+  /* entra con un colpo, poi batte come un cuore fino al secondo dopo */
+  animation: quiz-slam 0.32s cubic-bezier(0.2, 0.9, 0.3, 1.2) both, quiz-pulse 0.6s ease-in-out 0.32s 2 alternate;
+}
+@keyframes quiz-slam {
+  from {
+    transform: scale(2.4);
+    opacity: 0;
+    filter: blur(2vmin);
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+@keyframes quiz-pulse {
+  from {
+    transform: scale(1);
+  }
+  to {
+    transform: scale(calc(1.08 + 0.06 * var(--heat)));
+  }
+}
+.quiz-ready {
+  display: flex;
+  align-items: center;
+  gap: 2vmin;
+  font-size: 3vmin;
+  color: var(--text-2);
+}
+
+/* ---- domanda: categoria in alto e tempo ad anello */
+.quiz-chips {
+  display: inline-flex;
+  align-items: center;
+  gap: 1.4vmin;
+}
+.quiz-clock {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 15vmin;
+  height: 15vmin;
+  display: grid;
+  place-items: center;
+}
+.quiz-clock svg {
+  position: absolute;
+  inset: 0;
+  transform: rotate(-90deg);
+}
+.quiz-clock circle {
+  fill: none;
+  stroke-width: 8;
+}
+.quiz-clock-track {
+  stroke: rgba(255, 255, 255, 0.1);
+}
+.quiz-clock-fill {
+  stroke: url(#quiz-clock-grad);
+  stroke-linecap: round;
+  transition: stroke-dashoffset 0.25s linear, stroke 0.3s;
+}
+.quiz-clock b {
+  font-family: var(--font-display);
+  font-size: 6vmin;
+  font-weight: 900;
+  font-variant-numeric: tabular-nums;
+}
+.quiz-clock.hurry .quiz-clock-fill {
+  stroke: var(--red);
+}
+.quiz-clock.hurry {
+  filter: drop-shadow(0 0 3vmin rgba(248, 113, 113, 0.7));
+  animation: quiz-hurry 1s ease-in-out infinite;
+}
+.quiz-clock.hurry b {
+  color: var(--red);
+  animation: quiz-slam 0.3s cubic-bezier(0.2, 0.9, 0.3, 1.2) both;
+}
+@keyframes quiz-hurry {
+  50% {
+    transform: scale(1.1);
+  }
+}
 .quiz-hint {
   margin: 0;
   color: var(--text-2);

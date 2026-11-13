@@ -51,6 +51,28 @@ export function tick(len: number) {
   o.stop(t + 0.12);
 }
 
+/**
+ * Bip del conto alla rovescia del quiz: un tono pulito e corto (`accent` = l'ultimo secondo o il
+ * «via», più acuto e con un'ottava sopra che lo fa brillare).
+ */
+export function beep(freq: number, accent = false, volume = 0.09) {
+  const { ctx: c, out } = audio();
+  const t = c.currentTime;
+  const dur = accent ? 0.45 : 0.16;
+  for (const [f, v] of accent ? [[freq, volume], [freq * 2, volume * 0.45]] : [[freq, volume]]) {
+    const o = c.createOscillator();
+    const g = c.createGain();
+    o.type = "triangle";
+    o.frequency.value = f;
+    g.gain.setValueAtTime(0.0001, t);
+    g.gain.exponentialRampToValueAtTime(v, t + 0.008);
+    g.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(g).connect(out);
+    o.start(t);
+    o.stop(t + dur + 0.02);
+  }
+}
+
 /** Rullo di tamburi che cresce per `seconds`, poi colpo di piatto. */
 export function drumroll(seconds: number) {
   const { ctx: c, out } = audio();

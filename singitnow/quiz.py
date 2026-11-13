@@ -1,7 +1,7 @@
 """Quiz musicale: fra un brano e l'altro (in Karaoke con la Competizione accesa, se acceso nei
 Settaggi) una domanda sui brani della libreria, a cui si risponde dal telefono.
 
-1. intro (7 s): sulla TV la scritta del quiz con il conto alla rovescia;
+1. intro (10 s): sulla TV l'annuncio del quiz (tutti al telefono), poi il conto alla rovescia da 5;
 2. question: la TV fa sentire un pezzo di un brano della libreria (solo l'audio) e sui telefoni
    compaiono tre risposte. Le domande: titolo, chi la canta, anno di uscita, oppure la parola che
    viene subito dopo il pezzo ascoltato (il pezzo si ferma lì). Vale la prima risposta di ognuno;
@@ -29,7 +29,7 @@ from .library import READY, library
 
 log = logging.getLogger(__name__)
 
-INTRO = 7.0
+INTRO = 10.0  # 5 s di annuncio, poi il conto alla rovescia da 5 a 1
 CLIP = 20.0  # titolo, artista, anno: si risponde mentre il pezzo suona
 WORD_CLIP = 12.0  # parola successiva: il pezzo si ferma prima della parola…
 WORD_ANSWER = 10.0  # …e poi c'è ancora un po' di tempo per rispondere

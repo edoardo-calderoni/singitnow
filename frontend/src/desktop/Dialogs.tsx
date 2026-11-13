@@ -6,15 +6,18 @@ import { useImportNames } from "../shared/importNames";
 import { useCompetition } from "../shared/competition";
 
 /**
- * Karaoke: chi canta il brano aggiunto dal PC. Si cerca tra gli utenti collegati dal telefono
- * (o si scrive un nome); il campo può restare vuoto.
+ * Karaoke: chi canta il brano aggiunto dal PC (o fatto partire subito dalla copertina, `playNow`).
+ * Si cerca tra gli utenti collegati dal telefono (o si scrive un nome); il campo può restare vuoto,
+ * tranne a Competizione accesa.
  */
 export function SingerDialog({
   song,
+  playNow = false,
   onCancel,
   onConfirm,
 }: {
   song: Song;
+  playNow?: boolean;
   onCancel: () => void;
   onConfirm: (singer: string) => void;
 }) {
@@ -88,7 +91,9 @@ export function SingerDialog({
         </div>
         <p className="muted singer-hint">
           {!required
-            ? "Se lasci vuoto, il brano viene aggiunto senza nome."
+            ? playNow
+              ? "Se lasci vuoto, il brano parte senza nome."
+              : "Se lasci vuoto, il brano viene aggiunto senza nome."
             : freeName
               ? "Competizione accesa: nessun utente collegato, scrivi il nome di chi canta così il voto entra in classifica."
               : "Competizione accesa: scegli chi canta tra gli utenti collegati, così il voto entra in classifica."}
@@ -98,7 +103,7 @@ export function SingerDialog({
             Annulla
           </button>
           <button className="btn btn-primary" disabled={!valid}>
-            Aggiungi
+            {playNow ? "Canta ora" : "Aggiungi"}
           </button>
         </div>
       </form>

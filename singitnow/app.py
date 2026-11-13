@@ -345,6 +345,13 @@ def _check_not_queued(request: Request, song_id: str, token: str | None) -> None
 LOCKED = "Al momento non è possibile aggiungere brani alla playlist"
 
 
+def _check_singer_named(singer: str) -> None:
+    """Competizione accesa (in Karaoke): il voto va a qualcuno, quindi un brano non parte e non entra
+    in coda senza dire chi lo canta."""
+    if competition.enabled() and not mode.is_jukebox() and not singer.strip():
+        raise HTTPException(409, "Competizione accesa: indica chi canta il brano")
+
+
 def _check_unlocked(request: Request, token: str | None, singer: str = "") -> None:
     """«Blocca inserimenti»: aggiungono brani solo il PC e gli amministratori."""
     if mode.locked() and not admin.can_control(request, token):
@@ -459,6 +466,7 @@ def queue_song(req: QueueReq, request: Request, x_admin_token: str | None = Head
     if not library.get(req.song_id):
         raise HTTPException(404, "Brano non in libreria")
     _check_unlocked(request, x_admin_token, req.singer)
+    _check_singer_named(req.singer)
     _check_not_queued(request, req.song_id, x_admin_token)
     _check_one_at_a_time(request, req.singer, x_admin_token)
     _check_one_request(request, x_admin_token, req.singer)
@@ -636,6 +644,7 @@ def play(req: PlayReq):
         song = library.get(req.song_id)
         if not song or song.status != READY:
             raise HTTPException(409, "Brano non pronto")
+        _check_singer_named(req.singer)
         playlist.play_song(req.song_id, req.singer)
     else:
         if not playlist.play(req.entry_id):

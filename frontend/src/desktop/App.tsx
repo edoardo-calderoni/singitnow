@@ -5,6 +5,7 @@ import { entryStarts, fmtWait, useTick } from "../shared/queue";
 import { useLive } from "../shared/live";
 import { Avatar } from "../shared/Avatar";
 import { EditDialog, SingerDialog } from "./Dialogs";
+import { useCompetition } from "../shared/competition";
 import { TimingEditor } from "./TimingEditor";
 import { enterFullscreen, exitFullscreen, Player, toggleFullscreen } from "./Player";
 import { RequestEvent, RequestToasts, useRequests } from "./Requests";
@@ -64,6 +65,9 @@ export function App() {
   const [rejected, setRejected] = useState<ImportRejected | null>(null);
   const [searchFor, setSearchFor] = useState({ q: "", k: 0 });
   const [queueFor, setQueueFor] = useState<Song | null>(null);
+  // «Canta ora» dalla copertina a Competizione accesa: prima si dice chi canta
+  const [playFor, setPlayFor] = useState<Song | null>(null);
+  const competitionOn = useCompetition().enabled;
   const [editing, setEditing] = useState<Song | null>(null);
   const [timingFor, setTimingFor] = useState<Song | null>(null);
   // QR code d'ingresso mostrato per qualche secondo nell'angolo (richiesto da un amministratore)
@@ -280,7 +284,7 @@ export function App() {
             songs={songs}
             waiting={playlist.waiting}
             onCancelWaiting={(songId, singer) => safe(() => api.unqueueWaiting(songId, singer))}
-            onPlay={(s) => safe(() => api.playSong(s.id))}
+            onPlay={(s) => (!jukebox && competitionOn ? setPlayFor(s) : safe(() => api.playSong(s.id)))}
             onQueue={(s) => (jukebox ? safe(() => api.enqueue(s.id, "")) : setQueueFor(s))}
             onEdit={setEditing}
             onToast={setToast}
@@ -434,6 +438,18 @@ export function App() {
             const s = queueFor;
             setQueueFor(null);
             safe(() => api.enqueue(s.id, singer));
+          }}
+        />
+      )}
+      {playFor && (
+        <SingerDialog
+          song={playFor}
+          playNow
+          onCancel={() => setPlayFor(null)}
+          onConfirm={(singer) => {
+            const s = playFor;
+            setPlayFor(null);
+            safe(() => api.playSong(s.id, singer));
           }}
         />
       )}

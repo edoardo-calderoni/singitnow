@@ -312,7 +312,7 @@ def test_brano_gia_in_playlist_e_non_ancora_cantato_non_si_aggiunge(add_song):
             r = phone.post("/api/playlist", json={"song_id": song, "singer": "Anna"})
             assert r.status_code == 409
             assert r.json()["detail"] == appmod.ALREADY_QUEUED
-        assert pc.post("/api/playlist", json={"song_id": "a", "singer": ""}).status_code == 200
+        assert pc.post("/api/playlist", json={"song_id": "a", "singer": "Bruno"}).status_code == 200
 
         pl._entries[:] = []
         pl._waiting.clear()
@@ -323,6 +323,34 @@ def test_brano_gia_in_playlist_e_non_ancora_cantato_non_si_aggiunge(add_song):
         pl._entries[:], pl.now_playing = saved[0], saved[1]
         pl._waiting.clear()
         pl._waiting.update(saved[2])
+
+
+def test_a_competizione_accesa_un_brano_non_parte_ne_entra_in_coda_senza_chi_canta(add_song, monkeypatch):
+    """Il voto della competizione va a qualcuno: dal PC (anche con «Canta ora» dalla copertina) non si
+    fa partire né si mette in coda un brano senza dire chi lo canta. A competizione spenta sì."""
+    from fastapi.testclient import TestClient
+
+    from singitnow import app as appmod
+
+    add_song("a")
+    pc = TestClient(appmod.app, client=("127.0.0.1", 5000))
+    pl = appmod.playlist
+    saved = (list(pl._entries), pl.now_playing)
+    monkeypatch.setattr(appmod.mode, "get", lambda: mode.KARAOKE)
+    monkeypatch.setattr(appmod.competition, "enabled", lambda: True)
+    try:
+        for url, body in (("/api/player/play", {"song_id": "a"}), ("/api/playlist", {"song_id": "a"})):
+            for singer in ("", "   "):
+                r = pc.post(url, json=body | {"singer": singer})
+                assert r.status_code == 409
+                assert "chi canta" in r.json()["detail"]
+        assert pc.post("/api/player/play", json={"song_id": "a", "singer": "Anna"}).status_code == 200
+        assert pl.now_playing.singer == "Anna"
+
+        monkeypatch.setattr(appmod.competition, "enabled", lambda: False)
+        assert pc.post("/api/player/play", json={"song_id": "a", "singer": ""}).status_code == 200
+    finally:
+        pl._entries[:], pl.now_playing = saved
 
 
 def test_ip_per_il_qr_ignora_la_vpn():

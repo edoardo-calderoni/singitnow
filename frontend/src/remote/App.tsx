@@ -667,9 +667,9 @@ function ProfileSheet({
           onSave(n.trim(), l.trim(), newPhoto);
         }}
       >
-        {/* fisso in alto: foto, nome e cognome, Annulla / Salva / Esci; sotto scorre tutto il resto */}
+        {/* in alto: foto, nome e cognome, Annulla / Salva / Esci; sotto tutto il resto */}
         <div className="m-profile-top">
-          <div className="m-sheet-title">Il tuo profilo</div>
+          <div className="m-sheet-title">IL TUO PROFILO</div>
           <PhotoPicker
             preview={preview}
             onPick={setNewPhoto}

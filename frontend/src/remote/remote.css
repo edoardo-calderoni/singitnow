@@ -2077,34 +2077,26 @@ body {
 /* Profilo: esibizioni e record di tutte le serate */
 .m-profile-card {
   max-height: calc(100dvh - max(16px, env(safe-area-inset-top)) - max(16px, env(safe-area-inset-bottom)));
-  overflow: hidden;
-  padding-bottom: 0;
-}
-/* foto, nome, cognome e bottoni restano sempre visibili in alto */
-.m-profile-top {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 14px;
-  width: 100%;
-}
-.m-profile-top > * {
-  flex-shrink: 0;
-}
-/* sotto: admin, statistiche, brani e registrazioni, che scorrono */
-.m-profile-rest {
-  flex: 1 1 auto;
-  min-height: 0;
   overflow-y: auto;
   overscroll-behavior: contain;
+}
+/* in alto foto, nome, cognome e bottoni; sotto il resto: scorre tutto insieme */
+.m-profile-top,
+.m-profile-rest {
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 16px;
   width: 100%;
-  padding: 16px 0 18px;
+}
+.m-profile-top {
+  gap: 14px;
+}
+.m-profile-rest {
+  gap: 16px;
+  padding-top: 16px;
   border-top: 1px solid var(--border, rgba(255, 255, 255, 0.08));
 }
+.m-profile-top > *,
 .m-profile-rest > * {
   flex-shrink: 0;
 }

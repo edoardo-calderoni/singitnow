@@ -3350,7 +3350,8 @@ body {
   align-items: center;
   justify-content: center;
   padding: 4vh 5vw;
-  background: radial-gradient(circle at 50% 30%, rgba(139, 92, 246, 0.45), rgba(5, 5, 12, 0.97) 70%);
+  /* opaco: sotto restano il testo dell'ultimo brano e i comandi del player, non devono trasparire */
+  background: radial-gradient(circle at 50% 30%, rgba(139, 92, 246, 0.45), rgba(5, 5, 12, 0.97) 70%), var(--bg);
   animation: fade 0.4s ease;
   overflow: hidden;
   text-align: center;

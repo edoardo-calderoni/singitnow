@@ -3,7 +3,7 @@ import { Avatar } from "../shared/Avatar";
 import { useDj } from "../shared/mode";
 
 /**
- * Barra laterale: QR code piccolo per entrare dal telefono e, sotto, chi è collegato in questo
+ * Barra laterale: QR code per scaricare l'app ed entrare dal telefono e, sotto, chi è collegato in questo
  * momento (foto e nome).
  */
 export function Participants({ users, qrSvg }: { users: string[]; qrSvg?: string }) {

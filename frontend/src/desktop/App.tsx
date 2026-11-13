@@ -259,7 +259,7 @@ export function App() {
           <EveningButton playlist={playlist} songs={songs} onError={setToast} />
         </div>
 
-        {/* QR code piccolo per entrare e, sotto, chi è collegato dal telefono in questo momento;
+        {/* QR code per entrare e, sotto, chi è collegato dal telefono in questo momento;
             lo spazio libero va in fondo, sopra lo stato della connessione */}
         <Participants users={users} qrSvg={info?.qr_svg} />
 

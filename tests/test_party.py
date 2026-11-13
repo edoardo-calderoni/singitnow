@@ -63,3 +63,23 @@ def test_il_brano_che_suonava_torna_in_cima_alla_coda(add_song):
     assert again.now_playing is None
     assert [e.singer for e in again._entries] == ["Anna", "Bruno"]
     assert not again._entries[0].auto
+
+
+def test_omonimi_solo_iniziale_del_cognome():
+    from singitnow.people import short_names
+
+    # nessun omonimo: solo il nome
+    assert short_names([("Dado", "Calderoni"), ("Niky", "Colace")]) == {
+        ("Dado", "Calderoni"): "Dado",
+        ("Niky", "Colace"): "Niky",
+    }
+    # omonimi: tutti e due con l'iniziale puntata, mai più di una lettera
+    assert short_names([("Marco", "Rossi"), ("Marco", "Bianchi")]) == {
+        ("Marco", "Rossi"): "Marco R.",
+        ("Marco", "Bianchi"): "Marco B.",
+    }
+    # stessa iniziale: al secondo si aggiunge un numero, così restano distinti
+    assert short_names([("Dado", "C"), ("Dado", "Calderoni")]) == {
+        ("Dado", "C"): "Dado C.",
+        ("Dado", "Calderoni"): "Dado C. 2",
+    }

@@ -1,8 +1,9 @@
 """Persone della festa: nome e cognome di chi entra dal telefono, e il nome con cui chiamarle.
 
 Nella festa ognuno è chiamato solo con il nome. Se due persone diverse hanno lo stesso nome
-(cognomi diversi) diventano «Marco R.» e «Marco B.»; se anche l'iniziale coincide si aggiungono
-lettere del cognome fino a distinguerle («Marco Ro.» e «Marco Ru.»).
+(cognomi diversi) diventano «Marco R.» e «Marco B.»: sempre e solo l'iniziale del cognome. Se anche
+l'iniziale coincide, a chi viene dopo si aggiunge un numero («Marco R.» e «Marco R. 2»): il nome
+mostrato deve restare diverso per ognuno, perché coda, voti e foto lo usano per riconoscere la persona.
 
 La festa è fatta da chi è entrato da quando l'app è aperta (anche se ora è scollegato): così i nomi
 non cambiano ogni volta che qualcuno perde il Wi-Fi. Quando il nome mostrato di qualcuno cambia
@@ -35,8 +36,9 @@ def _key(first: str, last: str) -> str:
 
 
 def short_names(people: list[tuple[str, str]]) -> dict[tuple[str, str], str]:
-    """Nome mostrato per ogni (nome, cognome): solo il nome, oppure con l'iniziale del cognome (o
-    più lettere) se c'è un'altra persona con lo stesso nome. Usata anche per la Hall of Fame."""
+    """Nome mostrato per ogni (nome, cognome): solo il nome, oppure con l'iniziale puntata del
+    cognome se c'è un'altra persona con lo stesso nome (a tutti e due). Se anche l'iniziale coincide,
+    dal secondo in poi si aggiunge un numero. Usata anche per la Hall of Fame."""
     groups: dict[str, list[tuple[str, str]]] = {}
     for p in dict.fromkeys(people):  # senza doppioni, in ordine
         groups.setdefault(p[0].casefold(), []).append(p)
@@ -47,18 +49,12 @@ def short_names(people: list[tuple[str, str]]) -> dict[tuple[str, str], str]:
             for p in group:
                 out[p] = p[0]
             continue
+        seen: dict[str, int] = {}
         for p in group:
             first, last = p
-            if not last:
-                out[p] = first
-                continue
-            n = 1
-            # quante lettere del cognome servono per distinguerlo dagli omonimi
-            while n < len(last) and any(
-                q[1][:n].casefold() == last[:n].casefold() and q[1].casefold() != last.casefold() for q in group
-            ):
-                n += 1
-            out[p] = f"{first} {last[:n].upper() if n == 1 else last[:1].upper() + last[1:n].lower()}."
+            name = f"{first} {last[:1].upper()}." if last else first
+            n = seen[name.casefold()] = seen.get(name.casefold(), 0) + 1
+            out[p] = name if n == 1 else f"{name} {n}"
     return out
 
 

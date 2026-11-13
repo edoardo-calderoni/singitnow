@@ -316,7 +316,9 @@ export function Player({ entry, next, waitingNext, onClose, onNext, mini = false
       alive = false;
     };
   }, [song.id, song.media?.pitch]);
-  // due microfoni collegati = due intonazioni, altrimenti una sola
+  // due microfoni collegati e duetto = due intonazioni; senza duetto conta solo il microfono rosso
+  // (il blu si sente lo stesso alle casse, ma niente riga dell'intonazione né punteggio)
+  const duetMics = !jukebox && !!entry.partner;
   useEffect(() => {
     if (!pitchActive) return;
     let alive = true;
@@ -329,8 +331,9 @@ export function Player({ entry, next, waitingNext, onClose, onNext, mini = false
       const ids = await singingMics().catch(() => [""]);
       if (ids.length > 1) {
         first.stop();
-        started = ids.map(() => new MicPitch());
-        await Promise.all(started.map((m, i) => m.start(ids[i])));
+        const use = duetMics ? ids : ids.slice(0, 1); // il primo è il rosso
+        started = use.map(() => new MicPitch());
+        await Promise.all(started.map((m, i) => m.start(use[i])));
       }
       if (alive) setMics(started);
     })().catch(() => {
@@ -348,7 +351,7 @@ export function Player({ entry, next, waitingNext, onClose, onNext, mini = false
       started.forEach((m) => m.stop());
       setMics([]);
     };
-  }, [pitchActive, devicesRev]);
+  }, [pitchActive, devicesRev, duetMics]);
   const clock = useCallback(() => {
     const e = engineRef.current;
     return { t: e?.currentTime ?? 0, playing: !!e?.playing, outLatency: e?.outputLatency ?? 0 };

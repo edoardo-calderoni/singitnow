@@ -951,7 +951,7 @@ export function Player({ entry, next, waitingNext, onClose, onNext, mini = false
           {entry.singer && partner && <Avatar name={partner} className="big duet-second" />}
           <div>
             <div className="eyebrow">
-              {entry.singer ? (jukebox ? `Brano aggiunto da ${entry.singer}` : partner ? `Duetto: ${singersOf(entry)}` : `Richiesta da ${entry.singer}`) : mode === "dj" ? "DJ" : jukebox ? "Jukebox" : "Karaoke"}
+              {entry.singer ? (jukebox ? `Brano aggiunto da ${entry.singer}` : partner ? `Sul palco in duetto ${singersOf(entry)}` : `Sul palco ${entry.singer}`) : mode === "dj" ? "DJ" : jukebox ? "Jukebox" : "Karaoke"}
             </div>
             <div className="player-title">
               {song.title} <span className="muted">· {song.artist}</span>
